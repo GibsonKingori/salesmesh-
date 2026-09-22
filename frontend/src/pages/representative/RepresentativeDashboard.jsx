@@ -29,22 +29,31 @@ const ICONS = {
   ),
 };
 
+const priorityRingClass = (score) => {
+  if (score >= 70) return 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/30';
+  if (score >= 40) return 'bg-amber-500/10 text-amber-300 ring-amber-400/30';
+  return 'bg-slate-500/10 text-slate-400 ring-slate-400/20';
+};
+
 export default function RepresentativeDashboard() {
   const [deals, setDeals] = useState([]);
+  const [priorityDeals, setPriorityDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddDeal, setShowAddDeal] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
-  const fetchDeals = () => {
+  const fetchAll = () => {
     setLoading(true);
-    api
-      .get('/deals')
-      .then((res) => setDeals(res.data.deals))
+    Promise.all([api.get('/deals'), api.get('/deals/priority')])
+      .then(([all, ranked]) => {
+        setDeals(all.data.deals);
+        setPriorityDeals(ranked.data.deals);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
 
-  useEffect(fetchDeals, []);
+  useEffect(fetchAll, []);
 
   const myValue = deals.reduce((sum, d) => sum + Number(d.value || 0), 0);
   const openDeals = deals.filter((d) => !['won', 'lost'].includes(d.stage)).length;
@@ -60,7 +69,10 @@ export default function RepresentativeDashboard() {
 
       <div className="rounded-2xl border border-white/10 bg-white/[0.03] shadow-xl backdrop-blur-xl">
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-          <h2 className="font-display font-semibold text-white">Your deals</h2>
+          <div>
+            <h2 className="font-display font-semibold text-white">Your deals, by priority</h2>
+            <p className="mt-0.5 text-xs text-slate-500">Ranked by stage, urgency, and value — highest first</p>
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowImport(true)}
@@ -79,18 +91,25 @@ export default function RepresentativeDashboard() {
 
         {loading ? (
           <div className="px-5 py-10 text-center text-sm text-slate-400">Loading deals…</div>
-        ) : deals.length === 0 ? (
+        ) : priorityDeals.length === 0 ? (
           <div className="px-5 py-6">
             <EmptyState
-              title="No deals assigned to you yet"
+              title="No open deals assigned to you yet"
               description="Add your first deal or import a CSV of existing deals to get started."
             />
           </div>
         ) : (
           <ul className="divide-y divide-white/5">
-            {deals.map((d) => (
+            {priorityDeals.map((d) => (
               <li key={d.id} className="flex items-center justify-between px-5 py-3.5 transition-colors hover:bg-white/[0.04]">
-                <span className="text-sm font-medium text-slate-100">{d.title}</span>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold ring-1 ring-inset ${priorityRingClass(d.priority_score)}`}
+                  >
+                    {Math.round(d.priority_score)}
+                  </span>
+                  <span className="text-sm font-medium text-slate-100">{d.title}</span>
+                </div>
                 <div className="flex items-center gap-4">
                   <span className="text-sm text-slate-400">{currency(d.value)}</span>
                   <StageBadge stage={d.stage} />
@@ -104,9 +123,9 @@ export default function RepresentativeDashboard() {
       {showAddDeal && (
         <AddDealModal
           onClose={() => setShowAddDeal(false)}
-          onCreated={(deal) => {
-            setDeals((prev) => [deal, ...prev]);
+          onCreated={() => {
             setShowAddDeal(false);
+            fetchAll();
           }}
         />
       )}
@@ -114,7 +133,7 @@ export default function RepresentativeDashboard() {
       {showImport && (
         <ImportCsvModal
           onClose={() => setShowImport(false)}
-          onImported={fetchDeals}
+          onImported={fetchAll}
         />
       )}
     </DashboardShell>

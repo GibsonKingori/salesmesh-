@@ -3,6 +3,7 @@ import multer from 'multer';
 import { parse } from 'csv-parse/sync';
 import { supabase } from '../config/supabaseClient.js';
 import { requireAuth } from '../middleware/auth.js';
+import { rankDealsByPriority } from '../services/analytics.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -10,22 +11,31 @@ router.use(requireAuth);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
 const VALID_STAGES = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
 
+async function getScopedDeals(user) {
+  let query = supabase.from('deals').select('*').order('created_at', { ascending: false });
+  if (user.role === 'representative') {
+    query = query.eq('owner_id', user.id);
+  }
+  return query;
+}
+
 // GET /api/deals — manager sees team deals, rep sees only their own
 router.get('/', async (req, res) => {
-  let query = supabase.from('deals').select('*').order('created_at', { ascending: false });
-
-  if (req.user.role === 'representative') {
-    query = query.eq('owner_id', req.user.id);
-  }
-
-  const { data, error } = await query;
+  const { data, error } = await getScopedDeals(req.user);
   if (error) return res.status(400).json({ error: error.message });
   return res.json({ deals: data });
 });
 
+// GET /api/deals/priority — open deals ranked by prescriptive priority score
+router.get('/priority', async (req, res) => {
+  const { data, error } = await getScopedDeals(req.user);
+  if (error) return res.status(400).json({ error: error.message });
+  return res.json({ deals: rankDealsByPriority(data) });
+});
+
 // POST /api/deals — create a deal
 router.post('/', async (req, res) => {
-  const { title, value, stage, contact_id, expected_close_date } = req.body;
+  const { title, value, stage, contact_id, campaign_id, expected_close_date } = req.body;
 
   if (!title || value == null || !stage) {
     return res.status(400).json({ error: 'title, value, and stage are required' });
@@ -39,6 +49,7 @@ router.post('/', async (req, res) => {
         value,
         stage,
         contact_id: contact_id || null,
+        campaign_id: campaign_id || null,
         expected_close_date: expected_close_date || null,
         owner_id: req.user.id,
       },

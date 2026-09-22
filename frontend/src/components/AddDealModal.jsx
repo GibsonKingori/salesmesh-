@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import api from '../api/client.js';
 import Modal from './Modal.jsx';
 
@@ -11,9 +11,15 @@ export default function AddDealModal({ onClose, onCreated }) {
   const [title, setTitle] = useState('');
   const [value, setValue] = useState('');
   const [stage, setStage] = useState('lead');
+  const [campaignId, setCampaignId] = useState('');
+  const [campaigns, setCampaigns] = useState([]);
   const [expectedCloseDate, setExpectedCloseDate] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    api.get('/campaigns').then((res) => setCampaigns(res.data.campaigns)).catch(() => {});
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -24,6 +30,7 @@ export default function AddDealModal({ onClose, onCreated }) {
         title,
         value: Number(value),
         stage,
+        campaign_id: campaignId || null,
         expected_close_date: expectedCloseDate || null,
       });
       onCreated(data.deal);
@@ -80,6 +87,26 @@ export default function AddDealModal({ onClose, onCreated }) {
             </select>
           </div>
         </div>
+
+        {campaigns.length > 0 && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-slate-300">Campaign (optional)</label>
+            <select
+              value={campaignId}
+              onChange={(e) => setCampaignId(e.target.value)}
+              className={`${inputClass} appearance-none`}
+            >
+              <option value="" className="bg-slate-900">
+                None
+              </option>
+              {campaigns.map((c) => (
+                <option key={c.id} value={c.id} className="bg-slate-900">
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div>
           <label className="mb-1 block text-sm font-medium text-slate-300">Expected close date (optional)</label>
