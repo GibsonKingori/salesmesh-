@@ -8,10 +8,18 @@ Web-based sales analytics dashboard for Kenyan SMEs. PERN stack (PostgreSQL/Supa
 - [x] Role-based middleware (`requireAuth`, `requireRole`)
 - [x] Supabase schema for User, Deal, Contact, Campaign, Activity
 - [x] React + Tailwind skeleton with role-based routing
-- [ ] Supabase project actually created and schema run
-- [ ] `.env` filled in and both servers running locally
-- [ ] First real login working end-to-end
-- [ ] Push to GitHub, first commit
+- [x] Supabase project actually created and schema run
+- [x] `.env` filled in and both servers running locally
+- [x] First real login working end-to-end
+- [x] First commit made locally
+- [ ] Push to GitHub (no remote configured yet)
+
+## Ahead of Iteration 1 (pulled forward from later iterations)
+- [x] Deal CRUD (create + list) with a real "Add deal" UI
+- [x] CSV bulk import for deals, with per-row validation and error reporting
+- [x] Contacts CRUD (API)
+- [x] Activity log CRUD (API)
+- [x] Row-Level Security enabled on all five tables (`users`, `contacts`, `campaigns` were flagged by Supabase's advisor and have since been locked to `service_role` only)
 
 ## Setup
 
@@ -44,6 +52,7 @@ curl -X POST http://localhost:4000/api/auth/register \
 Then log in at http://localhost:5173/login.
 
 ## What's next (Iteration 2, Oct 3–14)
-- Full deal CRUD UI, pipeline-stage board, descriptive analytics charts (Recharts)
-- Contacts CRUD
-- CSV import endpoint
+- Pipeline-stage board view, descriptive analytics charts (Recharts)
+- Contacts and activity-log UI (backend already done)
+- Deal edit/delete UI (currently create + list only)
+- Push repo to GitHub, wire up GitHub Actions to run Jest/Supertest on push
