@@ -1,0 +1,145 @@
+import express from 'express';
+import multer from 'multer';
+import { parse } from 'csv-parse/sync';
+import { supabase } from '../config/supabaseClient.js';
+import { requireAuth } from '../middleware/auth.js';
+
+const router = express.Router();
+router.use(requireAuth);
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
+const VALID_STAGES = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
+
+// GET /api/deals — manager sees team deals, rep sees only their own
+router.get('/', async (req, res) => {
+  let query = supabase.from('deals').select('*').order('created_at', { ascending: false });
+
+  if (req.user.role === 'representative') {
+    query = query.eq('owner_id', req.user.id);
+  }
+
+  const { data, error } = await query;
+  if (error) return res.status(400).json({ error: error.message });
+  return res.json({ deals: data });
+});
+
+// POST /api/deals — create a deal
+router.post('/', async (req, res) => {
+  const { title, value, stage, contact_id, expected_close_date } = req.body;
+
+  if (!title || value == null || !stage) {
+    return res.status(400).json({ error: 'title, value, and stage are required' });
+  }
+
+  const { data, error } = await supabase
+    .from('deals')
+    .insert([
+      {
+        title,
+        value,
+        stage,
+        contact_id: contact_id || null,
+        expected_close_date: expected_close_date || null,
+        owner_id: req.user.id,
+      },
+    ])
+    .select()
+    .single();
+
+  if (error) return res.status(400).json({ error: error.message });
+  return res.status(201).json({ deal: data });
+});
+
+// POST /api/deals/import — bulk-create deals from a CSV file
+// Expected columns: title, value, stage, expected_close_date (optional), owner_email (optional, manager/admin only)
+router.post('/import', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'CSV file is required (form field name "file")' });
+  }
+
+  let records;
+  try {
+    records = parse(req.file.buffer.toString('utf-8'), {
+      columns: (header) => header.map((h) => h.trim().toLowerCase()),
+      skip_empty_lines: true,
+      trim: true,
+    });
+  } catch (err) {
+    return res.status(400).json({ error: `Could not parse CSV: ${err.message}` });
+  }
+
+  if (records.length === 0) {
+    return res.status(400).json({ error: 'CSV file has no data rows' });
+  }
+
+  const canAssignOthers = ['manager', 'admin'].includes(req.user.role);
+  const ownerEmails = [...new Set(records.map((r) => r.owner_email).filter(Boolean))];
+  let ownerByEmail = {};
+  if (ownerEmails.length > 0 && canAssignOthers) {
+    const { data: owners } = await supabase.from('users').select('id, email').in('email', ownerEmails);
+    ownerByEmail = Object.fromEntries((owners || []).map((u) => [u.email, u.id]));
+  }
+
+  const toInsert = [];
+  const skipped = [];
+
+  records.forEach((row, idx) => {
+    const rowNum = idx + 2; // +2: header row + 1-indexing
+    const title = row.title?.trim();
+    const stage = row.stage?.trim().toLowerCase();
+    const value = Number(row.value);
+
+    if (!title) return skipped.push({ row: rowNum, reason: 'Missing title' });
+    if (!VALID_STAGES.includes(stage)) {
+      return skipped.push({ row: rowNum, reason: `Invalid stage "${row.stage || ''}"` });
+    }
+    if (row.value === undefined || row.value === '' || Number.isNaN(value)) {
+      return skipped.push({ row: rowNum, reason: 'Missing or invalid value' });
+    }
+
+    let owner_id = req.user.id;
+    if (row.owner_email) {
+      if (!canAssignOthers) {
+        return skipped.push({ row: rowNum, reason: 'Only managers/admins can assign owner_email' });
+      }
+      const matched = ownerByEmail[row.owner_email.trim()];
+      if (!matched) return skipped.push({ row: rowNum, reason: `Unknown owner_email "${row.owner_email}"` });
+      owner_id = matched;
+    }
+
+    toInsert.push({
+      title,
+      value,
+      stage,
+      expected_close_date: row.expected_close_date?.trim() || null,
+      owner_id,
+    });
+  });
+
+  if (toInsert.length === 0) {
+    return res.status(400).json({ error: 'No valid rows to import', skipped });
+  }
+
+  const { data, error } = await supabase.from('deals').insert(toInsert).select();
+  if (error) return res.status(400).json({ error: error.message, skipped });
+
+  return res.status(201).json({ imported: data.length, skipped });
+});
+
+// PATCH /api/deals/:id — update a deal (e.g. move stage)
+router.patch('/:id', async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+
+  const { data, error } = await supabase
+    .from('deals')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) return res.status(400).json({ error: error.message });
+  return res.json({ deal: data });
+});
+
+export default router;
