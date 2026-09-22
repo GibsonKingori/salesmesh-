@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 
 import authRoutes from './routes/auth.routes.js';
 import dealsRoutes from './routes/deals.routes.js';
+import contactsRoutes from './routes/contacts.routes.js';
+import activitiesRoutes from './routes/activities.routes.js';
 
 dotenv.config();
 
@@ -17,6 +19,8 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/deals', dealsRoutes);
+app.use('/api/contacts', contactsRoutes);
+app.use('/api/activities', activitiesRoutes);
 // Iteration 3 will add: /api/analytics (diagnostic, predictive), /api/campaigns
 // Iteration 4 will add: /api/deals/priority (prescriptive scoring)
 
