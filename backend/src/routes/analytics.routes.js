@@ -12,25 +12,51 @@ import {
 
 const router = express.Router();
 router.use(requireAuth);
-router.use(requireRole('manager', 'admin'));
+
+// Manager-set target rates, as { 'lead->qualified': 0.5, ... }
+export async function loadBenchmarks() {
+  const { data, error } = await supabase.from('funnel_benchmarks').select('transition, rate');
+  if (error) throw error;
+  return Object.fromEntries(data.map((b) => [b.transition, Number(b.rate)]));
+}
+
+async function pipelineAnalytics(deals) {
+  return {
+    descriptive: descriptiveSummary(deals),
+    diagnostic: conversionFunnel(deals, await loadBenchmarks()),
+    predictive: forecastRevenue(deals),
+    velocity: pipelineVelocity(deals),
+  };
+}
 
 // GET /api/analytics/pipeline — descriptive + diagnostic + predictive, team-wide
-router.get('/pipeline', async (req, res) => {
+router.get('/pipeline', requireRole('manager', 'admin'), async (req, res) => {
   const { data: deals, error } = await supabase.from('deals').select('*');
   if (error) return res.status(400).json({ error: error.message });
 
-  return res.json({
-    descriptive: descriptiveSummary(deals),
-    diagnostic: conversionFunnel(deals),
-    predictive: forecastRevenue(deals),
-    velocity: pipelineVelocity(deals),
-  });
+  try {
+    return res.json(await pipelineAnalytics(deals));
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+// GET /api/analytics/me — the same analytics, scoped to the caller's own deals
+router.get('/me', async (req, res) => {
+  const { data: deals, error } = await supabase.from('deals').select('*').eq('owner_id', req.user.id);
+  if (error) return res.status(400).json({ error: error.message });
+
+  try {
+    return res.json(await pipelineAnalytics(deals));
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
 });
 
 // GET /api/analytics/campaigns — CPA/ROI per campaign
-router.get('/campaigns', async (req, res) => {
+router.get('/campaigns', requireRole('manager', 'admin'), async (req, res) => {
   const [{ data: campaigns, error: campaignsError }, { data: deals, error: dealsError }] = await Promise.all([
-    supabase.from('campaigns').select('*'),
+    supabase.from('campaigns').select('*').order('created_at', { ascending: false }),
     supabase.from('deals').select('*'),
   ]);
   if (campaignsError) return res.status(400).json({ error: campaignsError.message });

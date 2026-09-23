@@ -8,6 +8,7 @@ import contactsRoutes from './routes/contacts.routes.js';
 import activitiesRoutes from './routes/activities.routes.js';
 import campaignsRoutes from './routes/campaigns.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
+import settingsRoutes from './routes/settings.routes.js';
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ app.use('/api/contacts', contactsRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/campaigns', campaignsRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/settings', settingsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

@@ -56,11 +56,17 @@ describe('conversionFunnel', () => {
 
   it('flags a transition below benchmark', () => {
     const deals = [deal({ stage: 'lead' }), deal({ stage: 'lead' }), deal({ stage: 'qualified' })];
-    const { transitions } = conversionFunnel(deals);
+    const { transitions } = conversionFunnel(deals, { 'lead->qualified': 0.5 });
     const leadToQualified = transitions.find((t) => t.from === 'lead' && t.to === 'qualified');
     // 2 deals reached lead-or-beyond (all 3, since qualified counts too) — reached(lead)=3, reached(qualified)=1
     expect(leadToQualified.actualRate).toBeCloseTo(1 / 3, 2);
-    expect(leadToQualified.underperforming).toBe(true); // below 0.5 default benchmark
+    expect(leadToQualified.underperforming).toBe(true); // below the 0.5 benchmark
+  });
+
+  it('never flags transitions that have no benchmark set', () => {
+    const deals = [deal({ stage: 'lead' }), deal({ stage: 'lead' }), deal({ stage: 'qualified' })];
+    const { transitions } = conversionFunnel(deals);
+    expect(transitions.every((t) => t.expectedRate === null && !t.underperforming)).toBe(true);
   });
 });
 
@@ -94,12 +100,25 @@ describe('pipelineVelocity', () => {
 });
 
 describe('forecastRevenue', () => {
+  it('refuses to extrapolate when every win closed on the same day', () => {
+    const sameDay = '2026-09-23T10:00:00Z';
+    const deals = [1, 2, 3].map((i) => deal({ id: `w${i}`, stage: 'won', value: 100000, updated_at: sameDay }));
+    const result = forecastRevenue(deals, [30]);
+    expect(result.basis).toBe('insufficient_history');
+    expect(result.day30).toBe(0);
+  });
+
   it('returns zero for every horizon with no won deals', () => {
     const result = forecastRevenue([], [30, 60, 90]);
     expect(result.basis).toBe('no_won_deals');
     expect(result.day30).toBe(0);
     expect(result.day60).toBe(0);
     expect(result.day90).toBe(0);
+    expect(result.horizons).toEqual([
+      { days: 30, value: 0 },
+      { days: 60, value: 0 },
+      { days: 90, value: 0 },
+    ]);
   });
 
   it('projects forward using a simple linear trend', () => {

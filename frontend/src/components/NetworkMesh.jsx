@@ -48,22 +48,22 @@ export default function NetworkMesh({ className = '' }) {
             x2={nodeB.x}
             y2={nodeB.y}
             stroke="currentColor"
-            strokeOpacity="0.18"
-            strokeWidth="1"
+            strokeOpacity="0.38"
+            strokeWidth="1.1"
           />
         );
       })}
-      {NODES.map((n) => (
-        <circle
-          key={n.id}
-          cx={n.x}
-          cy={n.y}
-          r={PULSE_NODES.has(n.id) ? 4 : 2.5}
-          fill="currentColor"
-          className={PULSE_NODES.has(n.id) ? 'animate-pulse' : ''}
-          opacity={PULSE_NODES.has(n.id) ? 0.7 : 0.35}
-        />
-      ))}
+      {/* Pulse nodes glow in savanna gold; the rest are brand-coloured */}
+      {NODES.map((n) =>
+        PULSE_NODES.has(n.id) ? (
+          <g key={n.id} className="animate-pulse">
+            <circle cx={n.x} cy={n.y} r="10" fill="#f9c243" opacity="0.18" />
+            <circle cx={n.x} cy={n.y} r="4.5" fill="#f9c243" />
+          </g>
+        ) : (
+          <circle key={n.id} cx={n.x} cy={n.y} r="3" fill="currentColor" opacity="0.75" />
+        )
+      )}
     </svg>
   );
 }

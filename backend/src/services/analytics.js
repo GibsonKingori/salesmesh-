@@ -5,14 +5,12 @@ const OPEN_STAGES = ['lead', 'qualified', 'proposal', 'negotiation'];
 const FUNNEL_STAGE_ORDER = ['lead', 'qualified', 'proposal', 'negotiation', 'won'];
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Default expected conversion rates between adjacent funnel stages.
-// Placeholder benchmarks until Iteration 1 SME interviews (proposal §3.3) supply real ones.
-const DEFAULT_BENCHMARKS = {
-  'lead->qualified': 0.5,
-  'qualified->proposal': 0.6,
-  'proposal->negotiation': 0.5,
-  'negotiation->won': 0.4,
-};
+// Adjacent-stage transitions a manager can set a target conversion rate for
+// (stored in the funnel_benchmarks table, edited on the Settings page).
+export const FUNNEL_TRANSITIONS = FUNNEL_STAGE_ORDER.slice(0, -1).map(
+  (stage, idx) => `${stage}->${FUNNEL_STAGE_ORDER[idx + 1]}`
+);
+export const DEFAULT_FORECAST_HORIZONS = [30, 60, 90];
 
 const sum = (nums) => nums.reduce((a, b) => a + b, 0);
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -48,7 +46,8 @@ export function descriptiveSummary(deals) {
 // at or beyond that stage. Lost deals are excluded (we don't track the stage they were
 // lost at), so this undercounts true historical drop-off; a real cohort funnel needs
 // stage-change history, which Iteration 1's schema doesn't yet capture. ---
-export function conversionFunnel(deals, benchmarks = DEFAULT_BENCHMARKS) {
+// benchmarks: { 'lead->qualified': 0.5, ... }; transitions without one are never flagged.
+export function conversionFunnel(deals, benchmarks = {}) {
   const reached = (stageIdx) =>
     deals.filter((d) => FUNNEL_STAGE_ORDER.indexOf(d.stage) >= stageIdx).length;
 
@@ -77,11 +76,11 @@ export function conversionFunnel(deals, benchmarks = DEFAULT_BENCHMARKS) {
 // Fits a least-squares line through cumulative won-deal revenue over time, then
 // projects the resulting daily rate forward. updated_at is used as a proxy for
 // "date the deal closed" since the schema has no dedicated closed_at column. ---
-export function forecastRevenue(deals, horizonDaysList = [30, 60, 90], now = new Date()) {
+export function forecastRevenue(deals, horizonDaysList = DEFAULT_FORECAST_HORIZONS, now = new Date()) {
   const wonDeals = deals.filter((d) => d.stage === 'won' && d.updated_at);
 
   if (wonDeals.length === 0) {
-    return { basis: 'no_won_deals', dailyRate: 0, ...zeroHorizons(horizonDaysList) };
+    return withHorizonList({ basis: 'no_won_deals', dailyRate: 0, ...zeroHorizons(horizonDaysList) }, horizonDaysList);
   }
 
   const points = wonDeals
@@ -89,6 +88,12 @@ export function forecastRevenue(deals, horizonDaysList = [30, 60, 90], now = new
     .sort((a, b) => a.t - b.t);
 
   const t0 = points[0].t;
+  // All wins on the same day (e.g. straight after a CSV import) give no time axis to fit a
+  // trend to — the regression would divide by ~zero and report a huge daily rate
+  if (points[points.length - 1].t - t0 < DAY_MS) {
+    return withHorizonList({ basis: 'insufficient_history', dailyRate: 0, ...zeroHorizons(horizonDaysList) }, horizonDaysList);
+  }
+
   let cumulative = 0;
   const series = points.map((p) => {
     cumulative += p.v;
@@ -113,7 +118,12 @@ export function forecastRevenue(deals, horizonDaysList = [30, 60, 90], now = new
   horizonDaysList.forEach((h) => {
     result[`day${h}`] = round2(dailyRate * h);
   });
-  return result;
+  return withHorizonList(result, horizonDaysList);
+}
+
+// Also expose horizons as a list so the UI renders whatever the API chose, not its own [30, 60, 90]
+function withHorizonList(result, horizonDaysList) {
+  return { ...result, horizons: horizonDaysList.map((days) => ({ days, value: result[`day${days}`] })) };
 }
 
 function zeroHorizons(horizonDaysList) {

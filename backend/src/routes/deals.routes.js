@@ -4,12 +4,12 @@ import { parse } from 'csv-parse/sync';
 import { supabase } from '../config/supabaseClient.js';
 import { requireAuth } from '../middleware/auth.js';
 import { rankDealsByPriority } from '../services/analytics.js';
+import { VALID_STAGES, buildDealUpdate, canEditDeal } from '../services/dealUpdates.js';
 
 const router = express.Router();
 router.use(requireAuth);
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
-const VALID_STAGES = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
 
 async function getScopedDeals(user) {
   let query = supabase.from('deals').select('*').order('created_at', { ascending: false });
@@ -17,6 +17,13 @@ async function getScopedDeals(user) {
     query = query.eq('owner_id', user.id);
   }
   return query;
+}
+
+// Reps may only link contacts they own; managers/admins may link any contact
+async function contactIsAssignable(user, contactId) {
+  if (!contactId || ['manager', 'admin'].includes(user.role)) return true;
+  const { data } = await supabase.from('contacts').select('owner_id').eq('id', contactId).maybeSingle();
+  return data?.owner_id === user.id;
 }
 
 // GET /api/deals — manager sees team deals, rep sees only their own
@@ -39,6 +46,9 @@ router.post('/', async (req, res) => {
 
   if (!title || value == null || !stage) {
     return res.status(400).json({ error: 'title, value, and stage are required' });
+  }
+  if (!(await contactIsAssignable(req.user, contact_id))) {
+    return res.status(400).json({ error: 'Contact not found' });
   }
 
   const { data, error } = await supabase
@@ -137,10 +147,28 @@ router.post('/import', upload.single('file'), async (req, res) => {
   return res.status(201).json({ imported: data.length, skipped });
 });
 
-// PATCH /api/deals/:id — update a deal (e.g. move stage)
+// PATCH /api/deals/:id — update a deal (e.g. move stage). Reps may only edit their own
+// deals and cannot reassign them; stage moves are logged as stage_change activities.
 router.patch('/:id', async (req, res) => {
   const { id } = req.params;
-  const updates = req.body;
+
+  const { data: existing, error: fetchError } = await supabase
+    .from('deals')
+    .select('id, owner_id, stage')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (fetchError) return res.status(400).json({ error: fetchError.message });
+  // 404 (not 403) for other reps' deals so IDs can't be probed
+  if (!existing || !canEditDeal(req.user, existing)) {
+    return res.status(404).json({ error: 'Deal not found' });
+  }
+
+  const { updates, error: validationError } = buildDealUpdate(req.body, req.user);
+  if (validationError) return res.status(400).json({ error: validationError });
+  if (!(await contactIsAssignable(req.user, updates.contact_id))) {
+    return res.status(400).json({ error: 'Contact not found' });
+  }
 
   const { data, error } = await supabase
     .from('deals')
@@ -150,6 +178,20 @@ router.patch('/:id', async (req, res) => {
     .single();
 
   if (error) return res.status(400).json({ error: error.message });
+
+  if (updates.stage && updates.stage !== existing.stage) {
+    const { error: activityError } = await supabase.from('activities').insert([
+      {
+        deal_id: id,
+        user_id: req.user.id,
+        type: 'stage_change',
+        notes: `${existing.stage} → ${updates.stage}`,
+      },
+    ]);
+    // The deal update already succeeded; don't fail the request over the log entry
+    if (activityError) console.error('Failed to log stage_change activity:', activityError.message);
+  }
+
   return res.json({ deal: data });
 });
 

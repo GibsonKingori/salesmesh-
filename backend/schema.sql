@@ -79,3 +79,18 @@ alter table activities enable row level security;
 -- policies as the second layer once you migrate to Supabase Auth.)
 create policy "reps see own deals" on deals
   for select using (owner_id = auth.uid() or auth.role() = 'service_role');
+
+-- FUNNEL BENCHMARKS ---------------------------------------------------
+-- Target conversion rates between adjacent stages, set by a manager on the
+-- Settings page. A transition with no row gets no "below benchmark" warning.
+create table if not exists funnel_benchmarks (
+  transition text primary key check (
+    transition in ('lead->qualified', 'qualified->proposal', 'proposal->negotiation', 'negotiation->won')
+  ),
+  rate numeric(4,3) not null check (rate >= 0 and rate <= 1),
+  updated_by uuid references users(id) on delete set null,
+  updated_at timestamptz not null default now()
+);
+
+alter table funnel_benchmarks enable row level security;
+revoke all on funnel_benchmarks from anon, authenticated;
