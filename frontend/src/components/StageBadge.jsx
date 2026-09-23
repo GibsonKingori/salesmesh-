@@ -1,16 +1,16 @@
 import React from 'react';
 
-const STAGE_STYLES = {
-  lead: 'bg-slate-500/10 text-slate-300 ring-slate-400/20',
-  qualified: 'bg-sky-500/10 text-sky-300 ring-sky-400/20',
-  proposal: 'bg-amber-500/10 text-amber-300 ring-amber-400/20',
-  negotiation: 'bg-violet-500/10 text-violet-300 ring-violet-400/20',
-  won: 'bg-emerald-500/10 text-emerald-300 ring-emerald-400/20',
-  lost: 'bg-red-500/10 text-red-300 ring-red-400/20',
+export const STAGE_STYLES = {
+  lead: 'bg-ink-500/10 text-fg-soft ring-ink-400/20',
+  qualified: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-sky-400/20',
+  proposal: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-400/20',
+  negotiation: 'bg-violet-500/10 text-violet-700 dark:text-violet-300 ring-violet-400/20',
+  won: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-400/20',
+  lost: 'bg-red-500/10 text-red-700 dark:text-red-300 ring-red-400/20',
 };
 
 const DOT_STYLES = {
-  lead: 'bg-slate-400',
+  lead: 'bg-ink-400',
   qualified: 'bg-sky-400',
   proposal: 'bg-amber-400',
   negotiation: 'bg-violet-400',
