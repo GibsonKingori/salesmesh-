@@ -1,5 +1,6 @@
 import express from 'express';
 import { supabase } from '../config/supabaseClient.js';
+import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth } from '../middleware/auth.js';
 import { canEditDeal } from '../services/dealUpdates.js';
 
@@ -63,6 +64,7 @@ router.post('/', async (req, res) => {
     .single();
 
   if (error) return res.status(400).json({ error: error.message });
+  await mirrorUpsert('activities', data);
   return res.status(201).json({ activity: data });
 });
 
@@ -86,8 +88,9 @@ router.delete('/:id', async (req, res) => {
     return res.status(400).json({ error: 'Stage history cannot be deleted' });
   }
 
-  const { error } = await supabase.from('activities').delete().eq('id', id);
+  const { data: deleted, error } = await supabase.from('activities').delete().eq('id', id).select('id');
   if (error) return res.status(400).json({ error: error.message });
+  await mirrorDelete('activities', deleted);
   return res.status(204).send();
 });
 

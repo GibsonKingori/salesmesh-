@@ -1,5 +1,6 @@
 import express from 'express';
 import { supabase } from '../config/supabaseClient.js';
+import { mirrorUpsert } from '../config/postgresClient.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -35,6 +36,7 @@ router.post('/', requireRole('manager', 'admin'), async (req, res) => {
     .single();
 
   if (error) return res.status(400).json({ error: error.message });
+  await mirrorUpsert('campaigns', data);
   return res.status(201).json({ campaign: data });
 });
 
