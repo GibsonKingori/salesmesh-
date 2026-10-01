@@ -2,6 +2,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { supabase } from '../config/supabaseClient.js';
+import { mirrorUpsert } from '../config/postgresClient.js';
 
 const router = express.Router();
 
@@ -21,14 +22,16 @@ router.post('/register', async (req, res) => {
   const { data, error } = await supabase
     .from('users')
     .insert([{ name, email, password_hash, role }])
-    .select('id, name, email, role')
+    .select()
     .single();
 
   if (error) {
     return res.status(400).json({ error: error.message });
   }
 
-  return res.status(201).json({ user: data });
+  await mirrorUpsert('users', data);
+  const { id, name: savedName, email: savedEmail, role: savedRole } = data;
+  return res.status(201).json({ user: { id, name: savedName, email: savedEmail, role: savedRole } });
 });
 
 // POST /api/auth/login

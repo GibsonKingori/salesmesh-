@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import { parse } from 'csv-parse/sync';
 import { supabase } from '../config/supabaseClient.js';
+import { mirrorUpsert } from '../config/postgresClient.js';
 import { requireAuth } from '../middleware/auth.js';
 import { rankDealsByPriority } from '../services/analytics.js';
 import { VALID_STAGES, buildDealUpdate, canEditDeal } from '../services/dealUpdates.js';
@@ -68,6 +69,7 @@ router.post('/', async (req, res) => {
     .single();
 
   if (error) return res.status(400).json({ error: error.message });
+  await mirrorUpsert('deals', data);
   return res.status(201).json({ deal: data });
 });
 
@@ -143,6 +145,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
 
   const { data, error } = await supabase.from('deals').insert(toInsert).select();
   if (error) return res.status(400).json({ error: error.message, skipped });
+  await mirrorUpsert('deals', data);
 
   return res.status(201).json({ imported: data.length, skipped });
 });
@@ -178,18 +181,20 @@ router.patch('/:id', async (req, res) => {
     .single();
 
   if (error) return res.status(400).json({ error: error.message });
+  await mirrorUpsert('deals', data);
 
   if (updates.stage && updates.stage !== existing.stage) {
-    const { error: activityError } = await supabase.from('activities').insert([
+    const { data: activity, error: activityError } = await supabase.from('activities').insert([
       {
         deal_id: id,
         user_id: req.user.id,
         type: 'stage_change',
         notes: `${existing.stage} → ${updates.stage}`,
       },
-    ]);
+    ]).select();
     // The deal update already succeeded; don't fail the request over the log entry
     if (activityError) console.error('Failed to log stage_change activity:', activityError.message);
+    else await mirrorUpsert('activities', activity);
   }
 
   return res.json({ deal: data });

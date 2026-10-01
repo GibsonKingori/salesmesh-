@@ -1,5 +1,6 @@
 import express from 'express';
 import { supabase } from '../config/supabaseClient.js';
+import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { FUNNEL_TRANSITIONS } from '../services/analytics.js';
 import { loadBenchmarks } from './analytics.routes.js';
@@ -46,12 +47,14 @@ router.put('/benchmarks', async (req, res) => {
   }
 
   if (toUpsert.length > 0) {
-    const { error } = await supabase.from('funnel_benchmarks').upsert(toUpsert);
+    const { data, error } = await supabase.from('funnel_benchmarks').upsert(toUpsert).select();
     if (error) return res.status(400).json({ error: error.message });
+    await mirrorUpsert('funnel_benchmarks', data);
   }
   if (toClear.length > 0) {
-    const { error } = await supabase.from('funnel_benchmarks').delete().in('transition', toClear);
+    const { data, error } = await supabase.from('funnel_benchmarks').delete().in('transition', toClear).select('transition');
     if (error) return res.status(400).json({ error: error.message });
+    await mirrorDelete('funnel_benchmarks', data);
   }
 
   const saved = await loadBenchmarks();

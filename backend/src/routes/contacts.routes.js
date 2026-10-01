@@ -1,5 +1,6 @@
 import express from 'express';
 import { supabase } from '../config/supabaseClient.js';
+import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -33,6 +34,7 @@ router.post('/', async (req, res) => {
     .single();
 
   if (error) return res.status(400).json({ error: error.message });
+  await mirrorUpsert('contacts', data);
   return res.status(201).json({ contact: data });
 });
 
@@ -49,14 +51,17 @@ router.patch('/:id', async (req, res) => {
     .single();
 
   if (error) return res.status(400).json({ error: error.message });
+  await mirrorUpsert('contacts', data);
   return res.json({ contact: data });
 });
 
 // DELETE /api/contacts/:id — remove a contact
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
-  const { error } = await supabase.from('contacts').delete().eq('id', id);
+  const { data: deleted, error } = await supabase.from('contacts').delete().eq('id', id).select('id');
   if (error) return res.status(400).json({ error: error.message });
+  // deals.contact_id is "on delete set null" in both databases, so linked deals stay in step
+  await mirrorDelete('contacts', deleted);
   return res.status(204).send();
 });
 
