@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../config/supabaseClient.js';
 import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth } from '../middleware/auth.js';
+import { canEditDeal } from '../services/dealUpdates.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -38,14 +39,40 @@ router.post('/', async (req, res) => {
   return res.status(201).json({ contact: data });
 });
 
-// PATCH /api/contacts/:id — update a contact
+const EDITABLE_FIELDS = ['name', 'company', 'email', 'phone'];
+
+// Returns the contact if the user may change it, otherwise null (callers answer 404 either way,
+// so reps can't probe for other reps' contact IDs). Same ownership rule as deals.
+async function findEditableContact(user, id) {
+  const { data, error } = await supabase.from('contacts').select('id, owner_id').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data && canEditDeal(user, data) ? data : null;
+}
+
+// PATCH /api/contacts/:id — update a contact. Reps may only edit contacts they own.
 router.patch('/:id', async (req, res) => {
   const { id } = req.params;
-  const { name, company, email, phone } = req.body;
+
+  const updates = {};
+  for (const field of EDITABLE_FIELDS) {
+    if (req.body[field] !== undefined) updates[field] = req.body[field] === '' ? null : req.body[field];
+  }
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ error: `Nothing to update — send one of: ${EDITABLE_FIELDS.join(', ')}` });
+  }
+  if ('name' in updates && !updates.name) {
+    return res.status(400).json({ error: 'name cannot be empty' });
+  }
+
+  try {
+    if (!(await findEditableContact(req.user, id))) return res.status(404).json({ error: 'Contact not found' });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
 
   const { data, error } = await supabase
     .from('contacts')
-    .update({ name, company, email, phone })
+    .update(updates)
     .eq('id', id)
     .select()
     .single();
@@ -55,9 +82,16 @@ router.patch('/:id', async (req, res) => {
   return res.json({ contact: data });
 });
 
-// DELETE /api/contacts/:id — remove a contact
+// DELETE /api/contacts/:id — remove a contact. Reps may only delete contacts they own.
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
+
+  try {
+    if (!(await findEditableContact(req.user, id))) return res.status(404).json({ error: 'Contact not found' });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+
   const { data: deleted, error } = await supabase.from('contacts').delete().eq('id', id).select('id');
   if (error) return res.status(400).json({ error: error.message });
   // deals.contact_id is "on delete set null" in both databases, so linked deals stay in step

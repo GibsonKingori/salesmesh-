@@ -2,26 +2,42 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { supabase } from '../config/supabaseClient.js';
+import rateLimit from 'express-rate-limit';
 import { mirrorUpsert } from '../config/postgresClient.js';
 
 const router = express.Router();
 
-// POST /api/auth/register
-router.post('/register', async (req, res) => {
-  const { name, email, password, role } = req.body;
+export const MIN_PASSWORD_LENGTH = 8;
 
-  if (!name || !email || !password || !role) {
-    return res.status(400).json({ error: 'name, email, password, and role are required' });
+// Slows password guessing: 10 attempts per IP per 15 minutes across login and register
+router.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'Too many attempts — please wait 15 minutes and try again' },
+  })
+);
+
+// POST /api/auth/register — public sign-up always creates a representative.
+// Managers and admins are promoted by an admin via PATCH /api/users/:id/role,
+// so nobody can grant themselves elevated access.
+router.post('/register', async (req, res) => {
+  const { name, email, password } = req.body;
+
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: 'name, email, and password are required' });
   }
-  if (!['manager', 'representative', 'admin'].includes(role)) {
-    return res.status(400).json({ error: 'role must be manager, representative, or admin' });
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
   }
 
   const password_hash = await bcrypt.hash(password, 10);
 
   const { data, error } = await supabase
     .from('users')
-    .insert([{ name, email, password_hash, role }])
+    .insert([{ name, email, password_hash, role: 'representative' }])
     .select()
     .single();
 
