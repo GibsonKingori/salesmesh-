@@ -17,8 +17,10 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
+// mirrorStatus is set by server.js when the local PostgreSQL mirror is enabled
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', service: 'salesmesh-api' });
+  const mirrorStatus = req.app.locals.mirrorStatus;
+  res.json({ status: 'ok', service: 'salesmesh-api', postgresMirror: mirrorStatus ? mirrorStatus() : 'disabled' });
 });
 
 app.use('/api/auth', authRoutes);
