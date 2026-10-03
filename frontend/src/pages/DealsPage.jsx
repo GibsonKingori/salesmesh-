@@ -6,12 +6,28 @@ import EmptyState from '../components/EmptyState.jsx';
 import AddDealModal from '../components/AddDealModal.jsx';
 import ImportCsvModal from '../components/ImportCsvModal.jsx';
 import DealDrawer from '../components/DealDrawer.jsx';
+import PipelineBoard from '../components/PipelineBoard.jsx';
 import { currency, formatDate } from '../lib/format.js';
 
 const priorityRingClass = (score) => {
   if (score >= 70) return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-400/30';
   if (score >= 40) return 'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-400/30';
   return 'bg-ink-500/10 text-muted ring-ink-400/20';
+};
+
+const VIEWS = [
+  { id: 'list', label: 'List' },
+  { id: 'board', label: 'Board' },
+];
+
+// The chosen view is a per-browser preference; storage can be unavailable (private mode)
+const VIEW_KEY = 'salesmesh_deals_view';
+const readView = () => {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'board' ? 'board' : 'list';
+  } catch {
+    return 'list';
+  }
 };
 
 const TABS = [
@@ -31,6 +47,16 @@ export default function DealsPage({ scope }) {
   const [showAddDeal, setShowAddDeal] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState(null);
+  const [view, setView] = useState(readView);
+
+  const changeView = (next) => {
+    setView(next);
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      /* preference just isn't remembered */
+    }
+  };
 
   // silent: refresh after an edit without swapping the list for the loading state
   const fetchAll = ({ silent = false } = {}) => {
@@ -52,11 +78,14 @@ export default function DealsPage({ scope }) {
     if (stage === deal.stage) return;
     setError('');
     setSavingId(deal.id);
+    // Move it right away so the board feels instant; the refetch below corrects anything else
+    setDeals((prev) => prev.map((d) => (d.id === deal.id ? { ...d, stage } : d)));
     try {
       await api.patch(`/deals/${deal.id}`, { stage });
       // Refetch rather than patch locally: priority scores depend on the whole open set
       await fetchAll({ silent: true });
     } catch (err) {
+      setDeals((prev) => prev.map((d) => (d.id === deal.id ? { ...d, stage: deal.stage } : d)));
       setError(err.response?.data?.error || 'Could not update the deal stage');
     } finally {
       setSavingId(null);
@@ -67,22 +96,39 @@ export default function DealsPage({ scope }) {
     .filter((d) => ['won', 'lost'].includes(d.stage))
     .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
   const tabCounts = { open: priorityDeals.length, closed: closedDeals.length };
+  const scores = Object.fromEntries(priorityDeals.map((d) => [d.id, d.priority_score]));
 
   return (
     <DashboardShell title={isTeam ? 'Team deals' : 'My deals'}>
       <div className="rounded-2xl border border-fg/10 bg-surface shadow-sm shadow-ink-900/5">
-        <div className="flex items-center justify-between border-b border-fg/10 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-fg/10 px-5 py-4">
           <div>
             <h2 className="font-display font-semibold text-fg">
-              {tab === 'open' ? (isTeam ? 'Team deals, by priority' : 'Your deals, by priority') : 'Closed deals'}
+              {view === 'board' ? (isTeam ? 'Team pipeline' : 'Your pipeline') : tab === 'open' ? (isTeam ? 'Team deals, by priority' : 'Your deals, by priority') : 'Closed deals'}
             </h2>
             <p className="mt-0.5 text-xs text-subtle">
-              {tab === 'open'
+              {view === 'board'
+                ? 'Drag a deal to another column to change its stage'
+                : tab === 'open'
                 ? 'Ranked by stage, urgency, and value — highest first'
                 : 'Won and lost, most recently closed first'}
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <div className="flex rounded-lg border border-fg/10 bg-fg/5 p-0.5" role="group" aria-label="Deals view">
+              {VIEWS.map((v) => (
+                <button
+                  key={v.id}
+                  onClick={() => changeView(v.id)}
+                  aria-pressed={view === v.id}
+                  className={`rounded-md px-2.5 py-1 text-sm font-medium transition-colors ${
+                    view === v.id ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg'
+                  }`}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
             <button
               onClick={() => setShowImport(true)}
               className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-1.5 text-sm font-medium text-fg-soft transition-colors hover:border-fg/20 hover:bg-fg/10 hover:text-fg"
@@ -98,24 +144,26 @@ export default function DealsPage({ scope }) {
           </div>
         </div>
 
-        <div className="flex gap-1 border-b border-fg/10 px-5" role="tablist">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              role="tab"
-              aria-selected={tab === t.id}
-              onClick={() => setTab(t.id)}
-              className={`-mb-px border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
-                tab === t.id
-                  ? 'border-brand-400 text-fg'
-                  : 'border-transparent text-muted hover:text-fg'
-              }`}
-            >
-              {t.label}
-              {!loading && <span className="ml-1.5 text-xs text-subtle">{tabCounts[t.id]}</span>}
-            </button>
-          ))}
-        </div>
+        {view === 'list' && (
+          <div className="flex gap-1 border-b border-fg/10 px-5" role="tablist">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => setTab(t.id)}
+                className={`-mb-px border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
+                  tab === t.id
+                    ? 'border-brand-400 text-fg'
+                    : 'border-transparent text-muted hover:text-fg'
+                }`}
+              >
+                {t.label}
+                {!loading && <span className="ml-1.5 text-xs text-subtle">{tabCounts[t.id]}</span>}
+              </button>
+            ))}
+          </div>
+        )}
 
         {error && (
           <div className="mx-5 mt-4 flex items-center justify-between rounded-md border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
@@ -128,6 +176,14 @@ export default function DealsPage({ scope }) {
 
         {loading ? (
           <div className="px-5 py-10 text-center text-sm text-muted">Loading deals…</div>
+        ) : view === 'board' ? (
+          <PipelineBoard
+            deals={deals}
+            scores={scores}
+            savingId={savingId}
+            onMove={handleStageChange}
+            onOpen={setSelectedDeal}
+          />
         ) : tab === 'open' ? (
           priorityDeals.length === 0 ? (
             <div className="px-5 py-6">
