@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import { parse } from 'csv-parse/sync';
 import { supabase } from '../config/supabaseClient.js';
-import { mirrorUpsert } from '../config/postgresClient.js';
+import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth } from '../middleware/auth.js';
 import { rankDealsByPriority } from '../services/analytics.js';
 import { VALID_STAGES, buildDealUpdate, canEditDeal } from '../services/dealUpdates.js';
@@ -198,6 +198,28 @@ router.patch('/:id', async (req, res) => {
   }
 
   return res.json({ deal: data });
+});
+
+// DELETE /api/deals/:id — remove a deal. Reps may only delete their own deals.
+// Its activity log goes with it: activities.deal_id is "on delete cascade" in both databases.
+router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+
+  const { data: existing, error: fetchError } = await supabase
+    .from('deals')
+    .select('id, owner_id')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (fetchError) return res.status(400).json({ error: fetchError.message });
+  if (!existing || !canEditDeal(req.user, existing)) {
+    return res.status(404).json({ error: 'Deal not found' });
+  }
+
+  const { data: deleted, error } = await supabase.from('deals').delete().eq('id', id).select('id');
+  if (error) return res.status(400).json({ error: error.message });
+  await mirrorDelete('deals', deleted);
+  return res.status(204).send();
 });
 
 export default router;
