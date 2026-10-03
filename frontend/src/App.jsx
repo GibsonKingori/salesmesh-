@@ -4,6 +4,7 @@ import { useAuth } from './context/AuthContext.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import OverviewPage from './pages/OverviewPage.jsx';
 import DealsPage from './pages/DealsPage.jsx';
+import ContactsPage from './pages/ContactsPage.jsx';
 import CampaignsPage from './pages/manager/CampaignsPage.jsx';
 import SettingsPage from './pages/manager/SettingsPage.jsx';
 
@@ -32,6 +33,7 @@ export default function App() {
       <Route path="/manager" element={<ProtectedRoute allowedRoles={['manager', 'admin']} />}>
         <Route index element={<OverviewPage key="team" scope="team" />} />
         <Route path="deals" element={<DealsPage key="team" scope="team" />} />
+        <Route path="contacts" element={<ContactsPage key="team" scope="team" />} />
         <Route path="campaigns" element={<CampaignsPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
@@ -39,6 +41,7 @@ export default function App() {
       <Route path="/rep" element={<ProtectedRoute allowedRoles={['representative']} />}>
         <Route index element={<OverviewPage key="mine" scope="mine" />} />
         <Route path="deals" element={<DealsPage key="mine" scope="mine" />} />
+        <Route path="contacts" element={<ContactsPage key="mine" scope="mine" />} />
       </Route>
 
       <Route path="*" element={<RoleRedirect />} />

@@ -14,12 +14,14 @@ const NAV_LINKS = {
   manager: [
     { to: '/manager', label: 'Overview', end: true },
     { to: '/manager/deals', label: 'Deals' },
+    { to: '/manager/contacts', label: 'Contacts' },
     { to: '/manager/campaigns', label: 'Campaigns' },
     { to: '/manager/settings', label: 'Settings' },
   ],
   representative: [
     { to: '/rep', label: 'Overview', end: true },
     { to: '/rep/deals', label: 'Deals' },
+    { to: '/rep/contacts', label: 'Contacts' },
   ],
 };
 NAV_LINKS.admin = NAV_LINKS.manager;
