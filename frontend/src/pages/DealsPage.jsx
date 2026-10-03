@@ -272,6 +272,10 @@ export default function DealsPage({ scope }) {
           deal={selectedDeal}
           onClose={() => setSelectedDeal(null)}
           onChanged={() => fetchAll({ silent: true })}
+          onDeleted={() => {
+            setSelectedDeal(null);
+            fetchAll({ silent: true });
+          }}
         />
       )}
 
