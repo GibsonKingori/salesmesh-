@@ -1,5 +1,6 @@
 // Minimal in-memory stand-in for the supabase-js query builder, covering the calls
-// the routes make (select/insert/update/upsert/delete, eq/in filters, order, single).
+// the routes make (select/insert/update/upsert/delete, eq/in/ilike filters, order, range,
+// count, single).
 // Route tests use it so they never touch the real Supabase project.
 import { randomUUID } from 'node:crypto';
 
@@ -13,6 +14,9 @@ export function createFakeSupabase(seed = {}) {
     let returning = false;
     let columns = '*';
     let mode = 'many';
+    let withCount = false;
+    let orderBy = null;
+    let rangeBounds = null;
     const filters = [];
 
     const pick = (row) => {
@@ -37,17 +41,25 @@ export function createFakeSupabase(seed = {}) {
         affected = all.filter(matches);
       }
 
+      if (orderBy) {
+        const { col, ascending } = orderBy;
+        affected = [...affected].sort((a, b) => (a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : 0) * (ascending ? 1 : -1));
+      }
+      const count = withCount ? affected.length : null;
+      if (rangeBounds) affected = affected.slice(rangeBounds[0], rangeBounds[1] + 1);
+
       let data = op === 'select' || returning ? affected.map(pick) : null;
       if (mode === 'single' || mode === 'maybeSingle') {
         if (data.length === 0 && mode === 'single') return { data: null, error: { message: 'No rows found' } };
         data = data[0] ?? null;
       }
-      return { data, error: null };
+      return { data, count, error: null };
     }
 
     const api = {
-      select(cols = '*') {
+      select(cols = '*', options = {}) {
         columns = cols;
+        withCount = options.count === 'exact';
         if (op !== 'select') returning = true;
         return api;
       },
@@ -73,7 +85,27 @@ export function createFakeSupabase(seed = {}) {
         filters.push((r) => vals.includes(r[col]));
         return api;
       },
-      order() {
+      // SQL ILIKE: % and _ are wildcards unless escaped with a backslash
+      ilike(col, pattern) {
+        const literal = (ch) => ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        let source = '';
+        for (let i = 0; i < pattern.length; i++) {
+          const c = pattern[i];
+          if (c === '\\') source += literal(pattern[++i]);
+          else if (c === '%') source += '.*';
+          else if (c === '_') source += '.';
+          else source += literal(c);
+        }
+        const re = new RegExp(`^${source}$`, 'is');
+        filters.push((r) => re.test(r[col] ?? ''));
+        return api;
+      },
+      order(col, { ascending = true } = {}) {
+        orderBy = { col, ascending };
+        return api;
+      },
+      range(from, to) {
+        rangeBounds = [from, to];
         return api;
       },
       single() {

@@ -5,6 +5,15 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
 router.use(requireAuth);
+
+// GET /api/users/team — managers and admins: names for filters such as "deals owned by"
+router.get('/team', requireRole('manager', 'admin'), async (req, res) => {
+  const { data, error } = await supabase.from('users').select('id, name, role').order('name');
+  if (error) return res.status(400).json({ error: error.message });
+  return res.json({ users: data });
+});
+
+// Everything below is admin only
 router.use(requireRole('admin'));
 
 const ROLES = ['representative', 'manager', 'admin'];
