@@ -10,19 +10,15 @@ const FEATURES = [
   { title: 'Revenue forecast', text: 'A forward view built from the deals you actually close.' },
 ];
 
-const ROLES = [
-  { value: 'representative', label: 'Sales Representative' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'admin', label: 'Admin' },
-];
-
 export default function LoginPage() {
   const [mode, setMode] = useState('login'); // 'login' | 'register'
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('representative');
-  const [error, setError] = useState('');
+  // api/client.js sends users here with ?expired=1 when their session runs out
+  const [error, setError] = useState(() =>
+    new URLSearchParams(window.location.search).has('expired') ? 'Your session expired. Please log in again.' : ''
+  );
   const [loading, setLoading] = useState(false);
   const [welcomeName, setWelcomeName] = useState(null);
   const { login, register } = useAuth();
@@ -40,7 +36,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const user = isRegister ? await register(name, email, password, role) : await login(email, password);
+      const user = isRegister ? await register(name, email, password) : await login(email, password);
       setWelcomeName(user.name);
       setTimeout(() => {
         navigate(user.role === 'representative' ? '/rep' : '/manager');
@@ -180,26 +176,14 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   className={inputClass}
                   required
-                  minLength={6}
+                  minLength={isRegister ? 8 : undefined}
                 />
+                {isRegister && (
+                  <p className="mt-1 text-xs text-subtle">
+                    At least 8 characters. New accounts start as Sales Representative; an admin can change your role.
+                  </p>
+                )}
               </div>
-
-              {isRegister && (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-fg-soft">Role</label>
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                    className={`${inputClass} appearance-none`}
-                  >
-                    {ROLES.map((r) => (
-                      <option key={r.value} value={r.value} className="bg-surface">
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
 
               <button
                 type="submit"

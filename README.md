@@ -47,9 +47,14 @@ npm run dev              # http://localhost:5173
 ```bash
 curl -X POST http://localhost:4000/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"name":"Gibson","email":"gibson@example.com","password":"changeme","role":"manager"}'
+  -d '{"name":"Gibson","email":"gibson@example.com","password":"changeme123"}'
 ```
 Then log in at http://localhost:5173/login.
+
+Every sign-up starts as a **representative**, and the API ignores any `role` sent to it. An admin changes roles under **Settings → Team & roles**. For a brand-new database with no admin yet, promote the first one in the Supabase SQL Editor, then run `npm run db:sync` so local PostgreSQL gets the change too:
+```sql
+update users set role = 'admin' where email = 'gibson@example.com';
+```
 
 ## What's next (Iteration 2, Oct 3–14)
 - Pipeline-stage board view, descriptive analytics charts (Recharts)
