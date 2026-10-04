@@ -2,18 +2,20 @@ import express from 'express';
 import multer from 'multer';
 import { parse } from 'csv-parse/sync';
 import { supabase } from '../config/supabaseClient.js';
-import { mirrorUpsert } from '../config/postgresClient.js';
+import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth } from '../middleware/auth.js';
 import { rankDealsByPriority } from '../services/analytics.js';
 import { VALID_STAGES, buildDealUpdate, canEditDeal } from '../services/dealUpdates.js';
+import { parseDealQuery, applyDealFilters, matchesDealFilters } from '../services/dealFilters.js';
+import { recordAudit } from '../services/audit.js';
 
 const router = express.Router();
 router.use(requireAuth);
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
 
-async function getScopedDeals(user) {
-  let query = supabase.from('deals').select('*').order('created_at', { ascending: false });
+function scopedDealsQuery(user, { orderBy = 'created_at' } = {}) {
+  let query = supabase.from('deals').select('*', { count: 'exact' }).order(orderBy, { ascending: false });
   if (user.role === 'representative') {
     query = query.eq('owner_id', user.id);
   }
@@ -27,18 +29,37 @@ async function contactIsAssignable(user, contactId) {
   return data?.owner_id === user.id;
 }
 
-// GET /api/deals — manager sees team deals, rep sees only their own
+// GET /api/deals — manager sees team deals, rep sees only their own.
+// Optional: q (title search), status (open|closed), owner_id, campaign_id, limit + offset.
+// Closed deals come most recently updated first, everything else newest first.
 router.get('/', async (req, res) => {
-  const { data, error } = await getScopedDeals(req.user);
+  const { filters, page, error: queryError } = parseDealQuery(req.query, req.user);
+  if (queryError) return res.status(400).json({ error: queryError });
+
+  let query = applyDealFilters(
+    scopedDealsQuery(req.user, { orderBy: filters.status === 'closed' ? 'updated_at' : 'created_at' }),
+    filters
+  );
+  if (page) query = query.range(page.offset, page.offset + page.limit - 1);
+
+  const { data, count, error } = await query;
   if (error) return res.status(400).json({ error: error.message });
-  return res.json({ deals: data });
+  return res.json({ deals: data, total: count ?? data.length });
 });
 
-// GET /api/deals/priority — open deals ranked by prescriptive priority score
+// GET /api/deals/priority — open deals ranked by prescriptive priority score.
+// Takes the same optional filters and paging as GET /api/deals. Scores are computed over all
+// open deals first, so filtering never changes a deal's score.
 router.get('/priority', async (req, res) => {
-  const { data, error } = await getScopedDeals(req.user);
+  const { filters, page, error: queryError } = parseDealQuery(req.query, req.user);
+  if (queryError) return res.status(400).json({ error: queryError });
+
+  const { data, error } = await scopedDealsQuery(req.user);
   if (error) return res.status(400).json({ error: error.message });
-  return res.json({ deals: rankDealsByPriority(data) });
+
+  const ranked = rankDealsByPriority(data).filter((d) => matchesDealFilters(d, filters));
+  const deals = page ? ranked.slice(page.offset, page.offset + page.limit) : ranked;
+  return res.json({ deals, total: ranked.length });
 });
 
 // POST /api/deals — create a deal
@@ -70,6 +91,7 @@ router.post('/', async (req, res) => {
 
   if (error) return res.status(400).json({ error: error.message });
   await mirrorUpsert('deals', data);
+  await recordAudit(req.user, 'deal.create', { entity: 'deal', entityId: data.id, details: { title: data.title, value: data.value } });
   return res.status(201).json({ deal: data });
 });
 
@@ -146,6 +168,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
   const { data, error } = await supabase.from('deals').insert(toInsert).select();
   if (error) return res.status(400).json({ error: error.message, skipped });
   await mirrorUpsert('deals', data);
+  await recordAudit(req.user, 'deal.import', { entity: 'deal', details: { imported: data.length, skipped: skipped.length } });
 
   return res.status(201).json({ imported: data.length, skipped });
 });
@@ -197,7 +220,31 @@ router.patch('/:id', async (req, res) => {
     else await mirrorUpsert('activities', activity);
   }
 
+  await recordAudit(req.user, 'deal.update', { entity: 'deal', entityId: id, details: { title: data.title, changes: Object.keys(updates) } });
   return res.json({ deal: data });
+});
+
+// DELETE /api/deals/:id — remove a deal. Reps may only delete their own deals.
+// Its activity log goes with it: activities.deal_id is "on delete cascade" in both databases.
+router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+
+  const { data: existing, error: fetchError } = await supabase
+    .from('deals')
+    .select('id, owner_id')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (fetchError) return res.status(400).json({ error: fetchError.message });
+  if (!existing || !canEditDeal(req.user, existing)) {
+    return res.status(404).json({ error: 'Deal not found' });
+  }
+
+  const { data: deleted, error } = await supabase.from('deals').delete().eq('id', id).select('id');
+  if (error) return res.status(400).json({ error: error.message });
+  await mirrorDelete('deals', deleted);
+  await recordAudit(req.user, 'deal.delete', { entity: 'deal', entityId: id });
+  return res.status(204).send();
 });
 
 export default router;

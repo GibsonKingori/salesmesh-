@@ -14,15 +14,22 @@ const NAV_LINKS = {
   manager: [
     { to: '/manager', label: 'Overview', end: true },
     { to: '/manager/deals', label: 'Deals' },
+    { to: '/manager/contacts', label: 'Contacts' },
     { to: '/manager/campaigns', label: 'Campaigns' },
-    { to: '/manager/settings', label: 'Settings' },
   ],
   representative: [
     { to: '/rep', label: 'Overview', end: true },
     { to: '/rep/deals', label: 'Deals' },
+    { to: '/rep/contacts', label: 'Contacts' },
+    { to: '/rep/campaigns', label: 'Campaigns' },
+  ],
+  admin: [
+    { to: '/admin', label: 'Overview', end: true },
+    { to: '/admin/accounts', label: 'Accounts' },
+    { to: '/admin/configuration', label: 'Configuration' },
+    { to: '/admin/audit', label: 'Audit log' },
   ],
 };
-NAV_LINKS.admin = NAV_LINKS.manager;
 
 export default function Navbar({ title }) {
   const { user, logout } = useAuth();

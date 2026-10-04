@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import NetworkMesh from '../components/NetworkMesh.jsx';
 import Logo, { LogoMark } from '../components/Logo.jsx';
+import { HOME_BY_ROLE } from '../lib/roles.js';
 
 const FEATURES = [
   { title: 'Prioritised pipeline', text: 'Every open deal scored, so your team knows who to call next.' },
@@ -10,8 +11,9 @@ const FEATURES = [
   { title: 'Revenue forecast', text: 'A forward view built from the deals you actually close.' },
 ];
 
-const ROLES = [
-  { value: 'representative', label: 'Sales Representative' },
+// Manager and Admin need the access code set as ADMIN_SIGNUP_CODE on the server
+const ROLE_OPTIONS = [
+  { value: 'representative', label: 'Sales Rep' },
   { value: 'manager', label: 'Manager' },
   { value: 'admin', label: 'Admin' },
 ];
@@ -22,28 +24,41 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('representative');
-  const [error, setError] = useState('');
+  const [adminCode, setAdminCode] = useState('');
+  // api/client.js sends users here with ?expired=1 or ?disabled=1; the reset page with ?reset=1
+  const [error, setError] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('disabled')) return 'Your account has been disabled. Contact your administrator.';
+    if (params.has('expired')) return 'Your session expired. Please log in again.';
+    return '';
+  });
+  const [notice, setNotice] = useState(() =>
+    new URLSearchParams(window.location.search).has('reset') ? 'Password changed. Log in with your new password.' : ''
+  );
   const [loading, setLoading] = useState(false);
   const [welcomeName, setWelcomeName] = useState(null);
   const { login, register } = useAuth();
   const navigate = useNavigate();
 
   const isRegister = mode === 'register';
+  const needsCode = isRegister && role !== 'representative';
 
   const switchMode = (next) => {
     setMode(next);
     setError('');
+    setNotice('');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setNotice('');
     setLoading(true);
     try {
-      const user = isRegister ? await register(name, email, password, role) : await login(email, password);
+      const user = isRegister ? await register(name, email, password, role, needsCode ? adminCode : undefined) : await login(email, password);
       setWelcomeName(user.name);
       setTimeout(() => {
-        navigate(user.role === 'representative' ? '/rep' : '/manager');
+        navigate(HOME_BY_ROLE[user.role] || '/');
       }, 650);
     } catch (err) {
       setError(err.response?.data?.error || (isRegister ? 'Registration failed' : 'Login failed'));
@@ -144,6 +159,11 @@ export default function LoginPage() {
                   {error}
                 </div>
               )}
+              {notice && (
+                <div className="rounded-md border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-200">
+                  {notice}
+                </div>
+              )}
 
               {isRegister && (
                 <div>
@@ -172,7 +192,17 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-fg-soft">Password</label>
+                <div className="mb-1 flex items-baseline justify-between">
+                  <label className="block text-sm font-medium text-fg-soft">Password</label>
+                  {!isRegister && (
+                    <Link
+                      to="/forgot-password"
+                      className="text-xs font-medium text-brand-700 dark:text-brand-300 hover:text-brand-800 dark:hover:text-brand-200"
+                    >
+                      Forgot password?
+                    </Link>
+                  )}
+                </div>
                 <input
                   type="password"
                   placeholder="••••••••"
@@ -180,24 +210,51 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   className={inputClass}
                   required
-                  minLength={6}
+                  minLength={isRegister ? 8 : undefined}
                 />
+                {isRegister && (
+                  <p className="mt-1 text-xs text-subtle">
+                    At least 8 characters.
+                  </p>
+                )}
               </div>
 
               {isRegister && (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-fg-soft">Role</label>
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                    className={`${inputClass} appearance-none`}
-                  >
-                    {ROLES.map((r) => (
-                      <option key={r.value} value={r.value} className="bg-surface">
-                        {r.label}
-                      </option>
+                  <div className="flex rounded-lg border border-fg/10 bg-fg/5 p-1 text-sm font-medium">
+                    {ROLE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setRole(opt.value)}
+                        aria-pressed={role === opt.value}
+                        className={`flex-1 rounded-md py-1.5 transition-colors ${
+                          role === opt.value ? 'bg-fg/10 text-fg' : 'text-muted hover:text-fg'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
                     ))}
-                  </select>
+                  </div>
+                </div>
+              )}
+
+              {needsCode && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-fg-soft">Admin access code</label>
+                  <input
+                    type="password"
+                    placeholder="Ask your administrator"
+                    value={adminCode}
+                    onChange={(e) => setAdminCode(e.target.value)}
+                    className={inputClass}
+                    autoComplete="off"
+                    required
+                  />
+                  <p className="mt-1 text-xs text-subtle">
+                    Manager and Admin accounts need the code from your administrator.
+                  </p>
                 </div>
               )}
 

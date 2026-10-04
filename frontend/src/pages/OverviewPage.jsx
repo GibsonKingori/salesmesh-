@@ -4,6 +4,7 @@ import api from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import DashboardShell from '../components/DashboardShell.jsx';
 import StatCard from '../components/StatCard.jsx';
+import { downloadCsv } from '../lib/csv.js';
 import StageBadge from '../components/StageBadge.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import ConversionFunnelChart from '../components/ConversionFunnelChart.jsx';
@@ -31,7 +32,8 @@ export default function OverviewPage({ scope }) {
   const { user } = useAuth();
   const isTeam = scope === 'team';
   const basePath = isTeam ? '/manager' : '/rep';
-  const canEditTargets = ['manager', 'admin'].includes(user?.role);
+  // System Configuration (conversion targets) is an Administrator use case
+  const canEditTargets = user?.role === 'admin';
 
   const [analytics, setAnalytics] = useState(null);
   const [topDeals, setTopDeals] = useState([]);
@@ -69,8 +71,42 @@ export default function OverviewPage({ scope }) {
   const winRate = closedCount > 0 ? descriptive.wonCount / closedCount : null;
   const hasTargets = diagnostic.transitions.some((t) => t.expectedRate !== null);
 
+  // "Export Report" use case: KPIs, funnel, forecast and top deals in one CSV
+  const exportReport = () => {
+    const rows = [
+      ['Summary', 'Pipeline value (KES)', descriptive.totalValue],
+      ['Summary', 'Total deals', descriptive.totalDeals],
+      ['Summary', 'Open deals', descriptive.openCount],
+      ['Summary', 'Won value (KES)', descriptive.wonValue],
+      ['Summary', 'Won deals', descriptive.wonCount],
+      ['Summary', 'Lost deals', descriptive.lostCount],
+      ['Summary', 'Win rate (%)', winRate === null ? '' : Math.round(winRate * 100)],
+      ['Summary', 'Pipeline velocity (KES/day)', Math.round(velocity.velocity || 0)],
+      ...diagnostic.stages.map((st) => ['Funnel', `Reached ${st.stage}`, st.reached]),
+      ...diagnostic.transitions.map((t) => [
+        'Conversion',
+        `${t.from} → ${t.to} (actual / target %)`,
+        `${t.actualRate === null ? '' : Math.round(t.actualRate * 100)} / ${t.expectedRate === null ? '' : Math.round(t.expectedRate * 100)}`,
+      ]),
+      ...predictive.horizons.map((h) => ['Forecast', `Next ${h.days} days (KES)`, Math.round(h.value)]),
+      ...topDeals.map((d) => ['Top priority deal', d.title, d.value]),
+    ];
+    const today = new Date().toISOString().slice(0, 10);
+    downloadCsv(`salesmesh-sales-report-${today}.csv`, ['Section', 'Metric', 'Value'], rows);
+  };
+
   return (
     <DashboardShell title={title}>
+      {isTeam && (
+        <div className="mb-4 flex justify-end">
+          <button
+            onClick={exportReport}
+            className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-1.5 text-sm font-medium text-fg-soft transition-colors hover:bg-fg/10 hover:text-fg"
+          >
+            Export report
+          </button>
+        </div>
+      )}
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label={isTeam ? 'Pipeline value' : 'My pipeline value'}
@@ -100,14 +136,14 @@ export default function OverviewPage({ scope }) {
           title="Conversion funnel"
           subtitle={
             hasTargets
-              ? 'Compared against the targets set in Settings'
+              ? 'Compared against the conversion targets'
               : canEditTargets
                 ? 'No conversion targets set yet'
-                : 'Your manager hasn’t set conversion targets yet'
+                : 'Your admin hasn’t set conversion targets yet'
           }
           action={
             canEditTargets && (
-              <Link to="/manager/settings" className="text-xs font-medium text-brand-700 dark:text-brand-300 hover:text-brand-800 dark:hover:text-brand-200">
+              <Link to="/admin/configuration" className="text-xs font-medium text-brand-700 dark:text-brand-300 hover:text-brand-800 dark:hover:text-brand-200">
                 {hasTargets ? 'Edit targets' : 'Set targets'}
               </Link>
             )

@@ -2,12 +2,16 @@ import React, { useState } from 'react';
 import api from '../api/client.js';
 import Modal from './Modal.jsx';
 
+// Marketing channels common for Kenyan SMEs (ERD: Campaign.channel)
+export const CHANNELS = ['Social media', 'Radio', 'TV', 'SMS', 'Email', 'Print', 'Events', 'Referral', 'Other'];
+
 const inputClass =
   'w-full rounded-lg border border-fg/10 bg-fg/5 px-3 py-2 text-sm text-fg placeholder-faint outline-none transition-all focus:border-brand-400/50 focus:ring-2 focus:ring-brand-500/15';
 
 export default function AddCampaignModal({ onClose, onCreated }) {
   const [name, setName] = useState('');
   const [budget, setBudget] = useState('');
+  const [channel, setChannel] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [error, setError] = useState('');
@@ -21,6 +25,7 @@ export default function AddCampaignModal({ onClose, onCreated }) {
       const { data } = await api.post('/campaigns', {
         name,
         budget: Number(budget) || 0,
+        channel: channel || null,
         start_date: startDate || null,
         end_date: endDate || null,
       });
@@ -65,6 +70,18 @@ export default function AddCampaignModal({ onClose, onCreated }) {
             className={inputClass}
             required
           />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-fg-soft">Channel</label>
+          <select value={channel} onChange={(e) => setChannel(e.target.value)} className={inputClass}>
+            <option value="" className="bg-surface">Not set</option>
+            {CHANNELS.map((c) => (
+              <option key={c} value={c} className="bg-surface">
+                {c}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
