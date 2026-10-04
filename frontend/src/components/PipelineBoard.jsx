@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import StageBadge from './StageBadge.jsx';
 import StageSelect from './StageSelect.jsx';
-import { currency, formatDate } from '../lib/format.js';
+import { currency, currencyShort, formatDate } from '../lib/format.js';
 
 const STAGES = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
 
@@ -53,8 +53,8 @@ export default function PipelineBoard({ deals, scores, savingId, onMove, onOpen 
         >
           <header className="mb-2 flex items-center justify-between px-1">
             <StageBadge stage={stage} />
-            <span className="text-xs text-subtle">
-              {items.length} · {currency(total)}
+            <span className="text-xs text-subtle" title={currency(total)}>
+              {items.length} · {currencyShort(total)}
             </span>
           </header>
 

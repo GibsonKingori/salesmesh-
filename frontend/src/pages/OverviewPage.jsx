@@ -9,7 +9,7 @@ import StageBadge from '../components/StageBadge.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import ConversionFunnelChart from '../components/ConversionFunnelChart.jsx';
 import { ICONS } from '../components/icons.jsx';
-import { currency, percent } from '../lib/format.js';
+import { currency, currencyShort, percent } from '../lib/format.js';
 
 const TOP_PRIORITY_COUNT = 5;
 
@@ -110,14 +110,16 @@ export default function OverviewPage({ scope }) {
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label={isTeam ? 'Pipeline value' : 'My pipeline value'}
-          value={currency(descriptive.totalValue)}
+          value={currencyShort(descriptive.totalValue)}
+          fullValue={currency(descriptive.totalValue)}
           hint={`${descriptive.totalDeals} total deals`}
           icon={ICONS.pipeline}
         />
         <StatCard label="Open deals" value={descriptive.openCount} hint="Not yet won or lost" icon={ICONS.open} tone="sky" />
         <StatCard
           label="Won value"
-          value={currency(descriptive.wonValue)}
+          value={currencyShort(descriptive.wonValue)}
+          fullValue={currency(descriptive.wonValue)}
           hint={`${descriptive.wonCount} deal${descriptive.wonCount === 1 ? '' : 's'} won`}
           icon={ICONS.won}
           tone="emerald"
@@ -159,20 +161,22 @@ export default function OverviewPage({ scope }) {
               ? 'Trend-based — needs won deals to project from.'
               : predictive.basis === 'insufficient_history'
                 ? 'Trend-based — needs deals won on different days to spot a trend.'
-                : `Trend-based, ~${currency(predictive.dailyRate)}/day`
+                : `Trend-based, ~${currencyShort(predictive.dailyRate)}/day`
           }
         >
           <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${predictive.horizons.length}, minmax(0, 1fr))` }}>
             {predictive.horizons.map((h) => (
-              <div key={h.days} className="rounded-xl border border-fg/10 bg-fg/[0.02] p-3 text-center">
-                <p className="text-xs uppercase tracking-wide text-subtle">{h.days}d</p>
-                <p className="mt-1 font-display text-lg font-bold text-fg">{currency(h.value)}</p>
+              <div key={h.days} className="min-w-0 rounded-xl border border-fg/10 bg-fg/[0.02] px-2 py-3 text-center" title={currency(h.value)}>
+                <p className="text-xs uppercase tracking-wide text-subtle">{h.days} days</p>
+                <p className="mt-1 break-words font-display text-base font-bold leading-tight tabular-nums text-fg sm:text-lg">
+                  {currencyShort(h.value)}
+                </p>
               </div>
             ))}
           </div>
           {velocity.velocity > 0 && (
             <p className="mt-4 text-xs text-subtle">
-              Pipeline velocity: <span className="text-fg-soft">{currency(velocity.velocity)}/day</span>
+              Pipeline velocity: <span className="text-fg-soft" title={currency(velocity.velocity)}>{currencyShort(velocity.velocity)}/day</span>
               {' · '}avg cycle {Math.round(velocity.avgSalesCycleLength)} days
             </p>
           )}
