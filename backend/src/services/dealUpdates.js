@@ -6,6 +6,14 @@ export const VALID_STAGES = ['lead', 'qualified', 'proposal', 'negotiation', 'wo
 const EDITABLE_FIELDS = ['title', 'value', 'stage', 'contact_id', 'campaign_id', 'expected_close_date'];
 const MANAGER_ONLY_FIELDS = ['owner_id'];
 
+// closed_at records when a deal was won or lost; the forecast and velocity read it.
+// Returns the closed_at to save when a deal moves from `previousStage` to `nextStage`,
+// or undefined when it shouldn't change (e.g. editing a won deal's title).
+export function closedAtForStageChange(previousStage, nextStage, now = new Date()) {
+  if (!nextStage || nextStage === previousStage) return undefined;
+  return ['won', 'lost'].includes(nextStage) ? now.toISOString() : null;
+}
+
 export function canEditDeal(user, deal) {
   return ['manager', 'admin'].includes(user.role) || deal.owner_id === user.id;
 }
@@ -53,7 +61,6 @@ export function buildDealUpdate(body, user, now = new Date()) {
     if (field in body) updates[field] = body[field] || null;
   }
 
-  // forecastRevenue/pipelineVelocity use updated_at as the close date, so it must move on every edit.
   updates.updated_at = now.toISOString();
 
   return { updates };

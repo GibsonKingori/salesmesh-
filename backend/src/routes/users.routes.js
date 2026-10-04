@@ -3,13 +3,14 @@ import { supabase } from '../config/supabaseClient.js';
 import { mirrorUpsert } from '../config/postgresClient.js';
 import { requireAuth, requireRole, forgetAccount } from '../middleware/auth.js';
 import { recordAudit } from '../services/audit.js';
+import { fetchAll } from '../services/fetchAll.js';
 
 const router = express.Router();
 router.use(requireAuth);
 
 // GET /api/users/team — managers and admins: names for filters such as "deals owned by"
 router.get('/team', requireRole('manager', 'admin'), async (req, res) => {
-  const { data, error } = await supabase.from('users').select('id, name, role').order('name');
+  const { data, error } = await fetchAll(() => supabase.from('users').select('id, name, role').order('name').order('id'));
   if (error) return res.status(400).json({ error: error.message });
   return res.json({ users: data });
 });
@@ -23,7 +24,7 @@ const publicUser = ({ id, name, email, role, is_active, created_at }) => ({ id, 
 
 // GET /api/users — admin only: everyone who can sign in, with their role
 router.get('/', async (req, res) => {
-  const { data, error } = await supabase.from('users').select(PUBLIC_COLUMNS).order('created_at');
+  const { data, error } = await fetchAll(() => supabase.from('users').select(PUBLIC_COLUMNS).order('created_at').order('id'));
   if (error) return res.status(400).json({ error: error.message });
   return res.json({ users: data });
 });
