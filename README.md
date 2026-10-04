@@ -60,10 +60,22 @@ curl -X POST http://localhost:4000/api/auth/register \
 ```
 Then log in at http://localhost:5173/login.
 
-Every sign-up starts as a **representative**, and the API ignores any `role` sent to it. An admin changes roles under **Settings → Team & roles**. For a brand-new database with no admin yet, promote the first one in the Supabase SQL Editor, then run `npm run db:sync` so local PostgreSQL gets the change too:
-```sql
-update users set role = 'admin' where email = 'gibson@example.com';
-```
+On the **Register** tab, anyone can sign up as a **Sales Rep**. Choosing **Manager** or **Admin** asks for an access code, and the API only accepts it if it matches `ADMIN_SIGNUP_CODE` in `backend/.env`. Share that code only with people who should have elevated access. If you leave it empty, only representative sign-ups work. Admins can still change roles under **Roles & permissions**.
+
+### Dashboards by role (Chapter 4 use case diagram)
+- **Sales Representative** (`/rep`): own dashboard, deals, contacts, activities and campaign results.
+- **Sales Manager** (`/manager`): team KPIs, pipeline and campaign analytics, deals, contacts, and **Export report** (CSV) on the Overview and Campaigns pages.
+- **Administrator** (`/admin`): system overview with account search, **Accounts** (search, change roles, enable/disable, and open an account to add or delete its deals and campaigns), **System configuration** (conversion targets plus server settings) and the **Audit log** (filter by day, person and area; export to CSV).
+
+### Disabled accounts
+A disabled user can't log in, and any session they already have stops working within about 15 seconds. Role changes also apply on the user's next request.
+
+### Forgotten passwords
+**Forgot password?** on the login page asks for an email, then opens a page to choose a new password. Reset links work once and expire after 30 minutes; only a hash of each link is stored. SalesMesh doesn't send email yet, so:
+- outside production (`NODE_ENV` not `production`), the page goes straight to the reset step;
+- in production, an admin opens the account and uses **Create password reset link**, then sends the link to the user.
+
+Requests, completed resets and admin-issued links all appear in the audit log.
 
 ## What's next (Iteration 2, Oct 3–14)
 - Pipeline-stage board view, descriptive analytics charts (Recharts)

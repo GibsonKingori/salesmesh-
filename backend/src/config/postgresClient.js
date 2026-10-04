@@ -34,6 +34,8 @@ export const PRIMARY_KEYS = {
   deals: 'id',
   activities: 'id',
   funnel_benchmarks: 'transition',
+  audit_logs: 'id',
+  password_resets: 'id',
 };
 
 const quote = (ident) => `"${ident.replace(/"/g, '""')}"`;

@@ -4,6 +4,7 @@ import request from 'supertest';
 import { createFakeSupabase } from '../test/fakeSupabase.js';
 
 process.env.JWT_SECRET = 'test-secret';
+process.env.ADMIN_SIGNUP_CODE = 'test-admin-code';
 
 const admin = { id: 'admin-1', name: 'Ada', email: 'ada@example.com', role: 'admin' };
 const manager = { id: 'mgr-1', name: 'Mo', email: 'mo@example.com', role: 'manager' };
@@ -37,15 +38,33 @@ beforeEach(() => {
 });
 
 describe('POST /api/auth/register', () => {
-  test('always creates a representative, even when admin is requested', async () => {
+  test('creates a representative by default', async () => {
     const res = await request(app)
       .post('/api/auth/register')
-      .send({ name: 'Eve', email: 'eve@example.com', password: 'longenough', role: 'admin' });
+      .send({ name: 'Eve', email: 'eve@example.com', password: 'longenough' });
 
     expect(res.status).toBe(201);
     expect(res.body.user.role).toBe('representative');
-    expect(fake.tables.users.find((u) => u.email === 'eve@example.com').role).toBe('representative');
     expect(res.body.user.password_hash).toBeUndefined();
+  });
+
+  test('refuses admin without the right access code', async () => {
+    for (const adminCode of [undefined, 'wrong-code']) {
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send({ name: 'Eve', email: 'eve@example.com', password: 'longenough', role: 'admin', adminCode });
+      expect(res.status).toBe(403);
+    }
+    expect(fake.tables.users).toHaveLength(4);
+  });
+
+  test('creates an admin with the right access code', async () => {
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ name: 'Eve', email: 'eve@example.com', password: 'longenough', role: 'admin', adminCode: 'test-admin-code' });
+
+    expect(res.status).toBe(201);
+    expect(fake.tables.users.find((u) => u.email === 'eve@example.com').role).toBe('admin');
   });
 
   test('rejects passwords shorter than 8 characters', async () => {
@@ -60,14 +79,14 @@ describe('POST /api/auth/register', () => {
 
 describe('auth rate limiting', () => {
   test('blocks an IP after 10 attempts in the window', async () => {
-    // The two register tests above already used 2 of this file's 10 attempts
+    // The register tests above already used 5 of this file's 10 attempts
     const statuses = [];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 7; i++) {
       const res = await request(app).post('/api/auth/login').send({ email: 'nobody@example.com', password: 'wrong' });
       statuses.push(res.status);
     }
-    expect(statuses.slice(0, 8).every((s) => s === 401)).toBe(true);
-    expect(statuses.slice(8)).toEqual([429, 429]);
+    expect(statuses.slice(0, 5).every((s) => s === 401)).toBe(true);
+    expect(statuses.slice(5)).toEqual([429, 429]);
   });
 });
 
@@ -151,4 +170,70 @@ test('responses carry helmet security headers', async () => {
   const res = await request(app).get('/api/health');
   expect(res.headers['x-content-type-options']).toBe('nosniff');
   expect(res.headers['x-powered-by']).toBeUndefined();
+});
+
+describe('admin dashboard API', () => {
+  test('only admins can read the overview, config and audit log', async () => {
+    for (const path of ['/api/admin/overview', '/api/admin/config', '/api/admin/audit']) {
+      for (const user of [manager, rep]) {
+        const res = await request(app).get(path).set('Authorization', tokenFor(user));
+        expect(res.status).toBe(403);
+      }
+      const res = await request(app).get(path).set('Authorization', tokenFor(admin));
+      expect(res.status).toBe(200);
+    }
+  });
+
+  test('overview counts users by role', async () => {
+    const res = await request(app).get('/api/admin/overview').set('Authorization', tokenFor(admin));
+    expect(res.body.users.byRole).toEqual({ admin: 1, manager: 1, representative: 2 });
+    expect(res.body.records.contacts).toBe(2);
+  });
+
+  test('role changes are written to the audit log and can be filtered by category', async () => {
+    await request(app).patch(`/api/users/${rep.id}/role`).set('Authorization', tokenFor(admin)).send({ role: 'manager' });
+    await request(app).post('/api/auth/logout').set('Authorization', tokenFor(admin));
+
+    const res = await request(app).get('/api/admin/audit?category=user').set('Authorization', tokenFor(admin));
+    expect(res.status).toBe(200);
+    expect(res.body.entries).toHaveLength(1);
+    expect(res.body.entries[0]).toMatchObject({
+      user_id: admin.id,
+      action: 'user.role_change',
+      entity_id: rep.id,
+      details: { from: 'representative', to: 'manager' },
+    });
+
+    const bad = await request(app).get('/api/admin/audit?category=nope').set('Authorization', tokenFor(admin));
+    expect(bad.status).toBe(400);
+  });
+});
+
+describe('system configuration', () => {
+  test('managers can read conversion targets but only admins can change them', async () => {
+    const read = await request(app).get('/api/settings/benchmarks').set('Authorization', tokenFor(manager));
+    expect(read.status).toBe(200);
+
+    const body = { rates: { 'lead->qualified': 0.5 } };
+    const denied = await request(app).put('/api/settings/benchmarks').set('Authorization', tokenFor(manager)).send(body);
+    expect(denied.status).toBe(403);
+    const allowed = await request(app).put('/api/settings/benchmarks').set('Authorization', tokenFor(admin)).send(body);
+    expect(allowed.status).toBe(200);
+  });
+});
+
+describe('rep campaign results', () => {
+  test("shows only the caller's own deals per campaign, without budget", async () => {
+    fake.tables.campaigns = [{ id: 'camp-1', name: 'Radio', channel: 'radio', budget: 1000, created_at: '2026-01-01' }];
+    fake.tables.deals = [
+      { id: 'd1', campaign_id: 'camp-1', owner_id: rep.id, stage: 'won', value: 500 },
+      { id: 'd2', campaign_id: 'camp-1', owner_id: rep.id, stage: 'lead', value: 200 },
+      { id: 'd3', campaign_id: 'camp-1', owner_id: otherRep.id, stage: 'won', value: 900 },
+    ];
+
+    const res = await request(app).get('/api/analytics/campaigns/me').set('Authorization', tokenFor(rep));
+    expect(res.status).toBe(200);
+    expect(res.body.campaigns[0]).toMatchObject({ dealCount: 2, wonCount: 1, wonValue: 500, openValue: 200, channel: 'radio' });
+    expect(res.body.campaigns[0].budget).toBeUndefined();
+  });
 });

@@ -1,5 +1,5 @@
 // Minimal in-memory stand-in for the supabase-js query builder, covering the calls
-// the routes make (select/insert/update/upsert/delete, eq/in/ilike filters, order, range,
+// the routes make (select/insert/update/upsert/delete, eq/is/lt/gte/in/ilike filters, order, range,
 // count, single).
 // Route tests use it so they never touch the real Supabase project.
 import { randomUUID } from 'node:crypto';
@@ -31,6 +31,16 @@ export function createFakeSupabase(seed = {}) {
       if (op === 'insert') {
         affected = payload.map((r) => ({ id: randomUUID(), created_at: new Date().toISOString(), ...r }));
         all.push(...affected);
+      } else if (op === 'upsert') {
+        // Matches on "transition" for funnel_benchmarks, "id" everywhere else
+        affected = payload.map((r) => {
+          const key = 'transition' in r ? 'transition' : 'id';
+          const existing = all.find((row) => r[key] !== undefined && row[key] === r[key]);
+          if (existing) return Object.assign(existing, r);
+          const row = { id: randomUUID(), created_at: new Date().toISOString(), ...r };
+          all.push(row);
+          return row;
+        });
       } else if (op === 'update') {
         affected = all.filter(matches);
         affected.forEach((r) => Object.assign(r, payload));
@@ -68,6 +78,11 @@ export function createFakeSupabase(seed = {}) {
         payload = Array.isArray(rows) ? rows : [rows];
         return api;
       },
+      upsert(rows) {
+        op = 'upsert';
+        payload = Array.isArray(rows) ? rows : [rows];
+        return api;
+      },
       update(values) {
         op = 'update';
         payload = values;
@@ -79,6 +94,18 @@ export function createFakeSupabase(seed = {}) {
       },
       eq(col, val) {
         filters.push((r) => r[col] === val);
+        return api;
+      },
+      is(col, val) {
+        filters.push((r) => (r[col] ?? null) === val);
+        return api;
+      },
+      lt(col, val) {
+        filters.push((r) => r[col] < val);
+        return api;
+      },
+      gte(col, val) {
+        filters.push((r) => r[col] >= val);
         return api;
       },
       in(col, vals) {

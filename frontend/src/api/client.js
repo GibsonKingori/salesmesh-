@@ -22,7 +22,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !isAuthCall && localStorage.getItem('salesmesh_token')) {
       localStorage.removeItem('salesmesh_token');
       localStorage.removeItem('salesmesh_user');
-      window.location.assign('/login?expired=1');
+      window.location.assign(error.response.data?.code === 'account_disabled' ? '/login?disabled=1' : '/login?expired=1');
     }
     return Promise.reject(error);
   }

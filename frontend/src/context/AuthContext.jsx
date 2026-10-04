@@ -17,12 +17,18 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
-  const register = async (name, email, password) => {
-    await api.post('/auth/register', { name, email, password });
+  const register = async (name, email, password, role, adminCode) => {
+    await api.post('/auth/register', { name, email, password, role, adminCode });
     return login(email, password);
   };
 
-  const logout = () => {
+  // Tells the API first (for the audit log), then clears the session even if that call fails
+  const logout = async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // expired token or API down: signing out locally is still right
+    }
     localStorage.removeItem('salesmesh_token');
     localStorage.removeItem('salesmesh_user');
     setUser(null);

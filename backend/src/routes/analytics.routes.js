@@ -72,4 +72,30 @@ router.get('/campaigns', requireRole('manager', 'admin'), async (req, res) => {
   return res.json({ campaigns: results });
 });
 
+// GET /api/analytics/campaigns/me — "View Campaign Results" for a representative:
+// how the caller's own deals from each campaign are doing. Budget, CPA and ROI stay manager-only.
+router.get('/campaigns/me', async (req, res) => {
+  const [{ data: campaigns, error: campaignsError }, { data: deals, error: dealsError }] = await Promise.all([
+    supabase.from('campaigns').select('id, name, channel, start_date, end_date').order('created_at', { ascending: false }),
+    supabase.from('deals').select('id, campaign_id, stage, value').eq('owner_id', req.user.id),
+  ]);
+  if (campaignsError) return res.status(400).json({ error: campaignsError.message });
+  if (dealsError) return res.status(400).json({ error: dealsError.message });
+
+  const results = campaigns.map((campaign) => {
+    const mine = deals.filter((d) => d.campaign_id === campaign.id);
+    const won = mine.filter((d) => d.stage === 'won');
+    const open = mine.filter((d) => d.stage !== 'won' && d.stage !== 'lost');
+    return {
+      ...campaign,
+      dealCount: mine.length,
+      wonCount: won.length,
+      wonValue: won.reduce((sum, d) => sum + Number(d.value), 0),
+      openValue: open.reduce((sum, d) => sum + Number(d.value), 0),
+    };
+  });
+
+  return res.json({ campaigns: results });
+});
+
 export default router;
