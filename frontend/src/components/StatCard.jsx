@@ -10,7 +10,8 @@ const TONES = {
 
 // Icon sits beside the label; the value gets the full card width so large KES amounts never
 // run under the icon
-export default function StatCard({ label, value, hint, icon, tone = 'brand' }) {
+// `fullValue` is shown on hover when `value` is a shortened figure (e.g. Ksh 1.29B)
+export default function StatCard({ label, value, fullValue, hint, icon, tone = 'brand' }) {
   return (
     <div className="rounded-2xl border border-fg/10 bg-surface p-5 shadow-sm shadow-ink-900/5 transition-colors hover:border-brand-400/40">
       <div className="flex items-center justify-between gap-3">
@@ -23,7 +24,10 @@ export default function StatCard({ label, value, hint, icon, tone = 'brand' }) {
           </div>
         )}
       </div>
-      <p className="mt-3 truncate font-display text-[1.75rem] font-bold leading-tight tabular-nums text-fg" title={String(value)}>
+      <p
+        className="mt-3 truncate font-display text-2xl font-bold leading-tight tabular-nums text-fg xl:text-[1.75rem]"
+        title={String(fullValue ?? value)}
+      >
         {value}
       </p>
       {hint && <p className="mt-1 text-xs text-subtle">{hint}</p>}
