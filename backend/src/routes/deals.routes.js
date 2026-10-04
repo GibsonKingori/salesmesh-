@@ -5,17 +5,20 @@ import { supabase } from '../config/supabaseClient.js';
 import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth } from '../middleware/auth.js';
 import { rankDealsByPriority } from '../services/analytics.js';
-import { VALID_STAGES, buildDealUpdate, canEditDeal } from '../services/dealUpdates.js';
+import { buildDealUpdate, canEditDeal, closedAtForStageChange } from '../services/dealUpdates.js';
 import { parseDealQuery, applyDealFilters, matchesDealFilters } from '../services/dealFilters.js';
 import { recordAudit } from '../services/audit.js';
+import { fetchAll } from '../services/fetchAll.js';
+import { CLOSED_STAGES, contactKey, dateToTimestamp, mapHeaders, readDealRow } from '../services/dealImport.js';
 
 const router = express.Router();
 router.use(requireAuth);
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 function scopedDealsQuery(user, { orderBy = 'created_at' } = {}) {
-  let query = supabase.from('deals').select('*', { count: 'exact' }).order(orderBy, { ascending: false });
+  // id breaks ties (imported deals often share a date) so paging never repeats or skips a deal
+  let query = supabase.from('deals').select('*', { count: 'exact' }).order(orderBy, { ascending: false }).order('id');
   if (user.role === 'representative') {
     query = query.eq('owner_id', user.id);
   }
@@ -36,13 +39,16 @@ router.get('/', async (req, res) => {
   const { filters, page, error: queryError } = parseDealQuery(req.query, req.user);
   if (queryError) return res.status(400).json({ error: queryError });
 
-  let query = applyDealFilters(
-    scopedDealsQuery(req.user, { orderBy: filters.status === 'closed' ? 'updated_at' : 'created_at' }),
-    filters
-  );
-  if (page) query = query.range(page.offset, page.offset + page.limit - 1);
+  const buildQuery = () =>
+    applyDealFilters(scopedDealsQuery(req.user, { orderBy: filters.status === 'closed' ? 'updated_at' : 'created_at' }), filters);
 
-  const { data, count, error } = await query;
+  if (!page) {
+    const { data, error } = await fetchAll(buildQuery);
+    if (error) return res.status(400).json({ error: error.message });
+    return res.json({ deals: data, total: data.length });
+  }
+
+  const { data, count, error } = await buildQuery().range(page.offset, page.offset + page.limit - 1);
   if (error) return res.status(400).json({ error: error.message });
   return res.json({ deals: data, total: count ?? data.length });
 });
@@ -54,7 +60,7 @@ router.get('/priority', async (req, res) => {
   const { filters, page, error: queryError } = parseDealQuery(req.query, req.user);
   if (queryError) return res.status(400).json({ error: queryError });
 
-  const { data, error } = await scopedDealsQuery(req.user);
+  const { data, error } = await fetchAll(() => scopedDealsQuery(req.user));
   if (error) return res.status(400).json({ error: error.message });
 
   const ranked = rankDealsByPriority(data).filter((d) => matchesDealFilters(d, filters));
@@ -84,6 +90,7 @@ router.post('/', async (req, res) => {
         campaign_id: campaign_id || null,
         expected_close_date: expected_close_date || null,
         owner_id: req.user.id,
+        closed_at: closedAtForStageChange(null, stage) ?? null,
       },
     ])
     .select()
@@ -95,82 +102,199 @@ router.post('/', async (req, res) => {
   return res.status(201).json({ deal: data });
 });
 
-// POST /api/deals/import — bulk-create deals from a CSV file
-// Expected columns: title, value, stage, expected_close_date (optional), owner_email (optional, manager/admin only)
+// POST /api/deals/import — bulk-create deals from the SME's own records (CSV, field "file").
+// Columns (common alternatives accepted, see services/dealImport.js):
+//   required: title, value, stage
+//   optional: created_date, closed_date, expected_close_date, campaign, contact_name, company,
+//             contact_email, contact_phone, owner (manager/admin only: email or full name)
+// ?dryRun=1 checks everything and returns the preview without saving.
+const IMPORT_CHUNK = 500;
+
 router.post('/import', upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'CSV file is required (form field name "file")' });
   }
+  const dryRun = ['1', 'true'].includes(String(req.query.dryRun));
 
   let records;
+  let fields;
   try {
-    records = parse(req.file.buffer.toString('utf-8'), {
-      columns: (header) => header.map((h) => h.trim().toLowerCase()),
+    // Strip a UTF-8 BOM (Excel adds one) so the first header is recognised
+    const text = req.file.buffer.toString('utf-8').replace(/^﻿/, '');
+    records = parse(text, {
+      columns: (header) => {
+        fields = mapHeaders(header);
+        return header.map((h, i) => fields[i] ?? `__ignored_${i}`);
+      },
       skip_empty_lines: true,
       trim: true,
+      relax_column_count: true,
     });
   } catch (err) {
-    return res.status(400).json({ error: `Could not parse CSV: ${err.message}` });
+    return res.status(400).json({ error: `Could not read the CSV: ${err.message}` });
   }
 
   if (records.length === 0) {
-    return res.status(400).json({ error: 'CSV file has no data rows' });
+    return res.status(400).json({ error: 'The CSV file has no data rows' });
+  }
+  const missing = ['title', 'value', 'stage'].filter((f) => !fields.includes(f));
+  if (missing.length) {
+    return res.status(400).json({
+      error: `Missing required column(s): ${missing.join(', ')}. Download the template to see the expected headings.`,
+    });
   }
 
-  const canAssignOthers = ['manager', 'admin'].includes(req.user.role);
-  const ownerEmails = [...new Set(records.map((r) => r.owner_email).filter(Boolean))];
-  let ownerByEmail = {};
-  if (ownerEmails.length > 0 && canAssignOthers) {
-    const { data: owners } = await supabase.from('users').select('id, email').in('email', ownerEmails);
-    ownerByEmail = Object.fromEntries((owners || []).map((u) => [u.email, u.id]));
-  }
+  const isManager = ['manager', 'admin'].includes(req.user.role);
+  const today = new Date().toISOString().slice(0, 10);
 
-  const toInsert = [];
+  // Look-ups: campaigns by name, owners by email or name, existing contacts by name + company
+  const contactsQuery = () => {
+    const q = supabase.from('contacts').select('id, name, company').order('id');
+    return isManager ? q : q.eq('owner_id', req.user.id);
+  };
+  const [campaignsRes, usersRes, contactsRes] = await Promise.all([
+    fetchAll(() => supabase.from('campaigns').select('id, name').order('id')),
+    isManager ? fetchAll(() => supabase.from('users').select('id, name, email').order('id')) : Promise.resolve({ data: [] }),
+    fetchAll(contactsQuery),
+  ]);
+  const lookupError = [campaignsRes, usersRes, contactsRes].find((r) => r.error);
+  if (lookupError) return res.status(400).json({ error: lookupError.error.message });
+
+  const campaignByName = new Map(campaignsRes.data.map((c) => [c.name.trim().toLowerCase(), c.id]));
+  const ownerByKey = new Map();
+  usersRes.data.forEach((u) => {
+    ownerByKey.set(u.email.toLowerCase(), u.id);
+    ownerByKey.set(u.name.trim().toLowerCase(), u.id);
+  });
+  const contactByKey = new Map(contactsRes.data.map((c) => [contactKey(c.name, c.company), c.id]));
+
+  const deals = [];
   const skipped = [];
+  const newContacts = new Map(); // key -> contact row to create
+  let closedWithoutDate = 0;
+  let withoutCreatedDate = 0;
 
-  records.forEach((row, idx) => {
+  records.forEach((raw, idx) => {
     const rowNum = idx + 2; // +2: header row + 1-indexing
-    const title = row.title?.trim();
-    const stage = row.stage?.trim().toLowerCase();
-    const value = Number(row.value);
+    const { row, error } = readDealRow(raw, today);
+    if (error) return skipped.push({ row: rowNum, reason: error });
 
-    if (!title) return skipped.push({ row: rowNum, reason: 'Missing title' });
-    if (!VALID_STAGES.includes(stage)) {
-      return skipped.push({ row: rowNum, reason: `Invalid stage "${row.stage || ''}"` });
-    }
-    if (row.value === undefined || row.value === '' || Number.isNaN(value)) {
-      return skipped.push({ row: rowNum, reason: 'Missing or invalid value' });
+    let ownerId = req.user.id;
+    if (row.owner) {
+      if (!isManager) return skipped.push({ row: rowNum, reason: 'Only managers and admins can set the owner' });
+      ownerId = ownerByKey.get(row.owner.toLowerCase());
+      if (!ownerId) return skipped.push({ row: rowNum, reason: `No SalesMesh account for owner "${row.owner}"` });
     }
 
-    let owner_id = req.user.id;
-    if (row.owner_email) {
-      if (!canAssignOthers) {
-        return skipped.push({ row: rowNum, reason: 'Only managers/admins can assign owner_email' });
+    let campaignId = null;
+    if (row.campaign) {
+      campaignId = campaignByName.get(row.campaign.toLowerCase());
+      if (!campaignId) {
+        return skipped.push({ row: rowNum, reason: `Unknown campaign "${row.campaign}" — create it on the Campaigns page first` });
       }
-      const matched = ownerByEmail[row.owner_email.trim()];
-      if (!matched) return skipped.push({ row: rowNum, reason: `Unknown owner_email "${row.owner_email}"` });
-      owner_id = matched;
     }
 
-    toInsert.push({
-      title,
-      value,
-      stage,
-      expected_close_date: row.expected_close_date?.trim() || null,
-      owner_id,
+    let contactRef = null;
+    if (row.contact_name || row.company) {
+      const name = row.contact_name || row.company;
+      const key = contactKey(name, row.company);
+      if (contactByKey.has(key)) contactRef = { id: contactByKey.get(key) };
+      else {
+        if (!newContacts.has(key)) {
+          newContacts.set(key, {
+            name,
+            company: row.company || null,
+            email: row.contact_email || null,
+            phone: row.contact_phone || null,
+            owner_id: ownerId,
+          });
+        }
+        contactRef = { key };
+      }
+    }
+
+    const closed = CLOSED_STAGES.includes(row.stage);
+    if (closed && !row.closed_date) closedWithoutDate++;
+    if (!row.created_date) withoutCreatedDate++;
+
+    const createdAt = row.created_date ? dateToTimestamp(row.created_date) : new Date().toISOString();
+    // Closed deals with no date close "now", but never before they were created
+    const closedAt = closed ? (row.closed_date ? dateToTimestamp(row.closed_date) : new Date().toISOString()) : null;
+
+    deals.push({
+      rowNum,
+      contactRef,
+      deal: {
+        title: row.title,
+        value: row.value,
+        stage: row.stage,
+        expected_close_date: row.expected_close_date || null,
+        campaign_id: campaignId,
+        owner_id: ownerId,
+        created_at: createdAt,
+        updated_at: closedAt || createdAt,
+        closed_at: closedAt,
+      },
     });
   });
 
-  if (toInsert.length === 0) {
-    return res.status(400).json({ error: 'No valid rows to import', skipped });
+  const warnings = [];
+  if (closedWithoutDate) {
+    warnings.push(
+      `${closedWithoutDate} won/lost deal${closedWithoutDate === 1 ? ' has' : 's have'} no closed date, so today will be used. Add a closed_date column for an accurate forecast.`
+    );
+  }
+  if (withoutCreatedDate) {
+    warnings.push(
+      `${withoutCreatedDate} deal${withoutCreatedDate === 1 ? ' has' : 's have'} no created date, so today will be used. Add a created_date column for an accurate sales cycle.`
+    );
+  }
+  const ignored = fields.filter((f) => f === null).length;
+  if (ignored) warnings.push(`${ignored} column${ignored === 1 ? ' was' : 's were'} not recognised and will be ignored.`);
+
+  const summary = {
+    rows: records.length,
+    imported: deals.length,
+    skipped,
+    warnings,
+    newContacts: newContacts.size,
+    totalValue: deals.reduce((s, d) => s + d.deal.value, 0),
+    byStage: deals.reduce((acc, d) => ({ ...acc, [d.deal.stage]: (acc[d.deal.stage] || 0) + 1 }), {}),
+    recognisedColumns: fields.filter(Boolean),
+  };
+
+  if (dryRun || deals.length === 0) {
+    if (!dryRun) return res.status(400).json({ error: 'No valid rows to import', ...summary });
+    return res.json({ dryRun: true, ...summary, preview: deals.slice(0, 5).map((d) => d.deal) });
   }
 
-  const { data, error } = await supabase.from('deals').insert(toInsert).select();
-  if (error) return res.status(400).json({ error: error.message, skipped });
-  await mirrorUpsert('deals', data);
-  await recordAudit(req.user, 'deal.import', { entity: 'deal', details: { imported: data.length, skipped: skipped.length } });
+  // Save: new contacts first so deals can point at them, then deals in chunks
+  if (newContacts.size) {
+    const { data: created, error } = await supabase.from('contacts').insert([...newContacts.values()]).select();
+    if (error) return res.status(400).json({ error: error.message, ...summary });
+    await mirrorUpsert('contacts', created);
+    created.forEach((c) => contactByKey.set(contactKey(c.name, c.company), c.id));
+  }
+  const rows = deals.map(({ deal, contactRef }) => ({
+    ...deal,
+    contact_id: contactRef ? contactRef.id ?? contactByKey.get(contactRef.key) ?? null : null,
+  }));
 
-  return res.status(201).json({ imported: data.length, skipped });
+  let saved = 0;
+  for (let i = 0; i < rows.length; i += IMPORT_CHUNK) {
+    const { data, error } = await supabase.from('deals').insert(rows.slice(i, i + IMPORT_CHUNK)).select();
+    if (error) {
+      return res.status(400).json({ error: `Stopped after ${saved} deals: ${error.message}`, ...summary, imported: saved });
+    }
+    await mirrorUpsert('deals', data);
+    saved += data.length;
+  }
+
+  await recordAudit(req.user, 'deal.import', {
+    entity: 'deal',
+    details: { imported: saved, skipped: skipped.length, newContacts: newContacts.size, totalValue: summary.totalValue },
+  });
+  return res.status(201).json({ ...summary, imported: saved });
 });
 
 // PATCH /api/deals/:id — update a deal (e.g. move stage). Reps may only edit their own
@@ -195,6 +319,8 @@ router.patch('/:id', async (req, res) => {
   if (!(await contactIsAssignable(req.user, updates.contact_id))) {
     return res.status(400).json({ error: 'Contact not found' });
   }
+  const closedAt = closedAtForStageChange(existing.stage, updates.stage);
+  if (closedAt !== undefined) updates.closed_at = closedAt;
 
   const { data, error } = await supabase
     .from('deals')
