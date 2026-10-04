@@ -7,6 +7,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { rankDealsByPriority } from '../services/analytics.js';
 import { VALID_STAGES, buildDealUpdate, canEditDeal } from '../services/dealUpdates.js';
 import { parseDealQuery, applyDealFilters, matchesDealFilters } from '../services/dealFilters.js';
+import { recordAudit } from '../services/audit.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -90,6 +91,7 @@ router.post('/', async (req, res) => {
 
   if (error) return res.status(400).json({ error: error.message });
   await mirrorUpsert('deals', data);
+  await recordAudit(req.user, 'deal.create', { entity: 'deal', entityId: data.id, details: { title: data.title, value: data.value } });
   return res.status(201).json({ deal: data });
 });
 
@@ -166,6 +168,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
   const { data, error } = await supabase.from('deals').insert(toInsert).select();
   if (error) return res.status(400).json({ error: error.message, skipped });
   await mirrorUpsert('deals', data);
+  await recordAudit(req.user, 'deal.import', { entity: 'deal', details: { imported: data.length, skipped: skipped.length } });
 
   return res.status(201).json({ imported: data.length, skipped });
 });
@@ -217,6 +220,7 @@ router.patch('/:id', async (req, res) => {
     else await mirrorUpsert('activities', activity);
   }
 
+  await recordAudit(req.user, 'deal.update', { entity: 'deal', entityId: id, details: { title: data.title, changes: Object.keys(updates) } });
   return res.json({ deal: data });
 });
 
@@ -239,6 +243,7 @@ router.delete('/:id', async (req, res) => {
   const { data: deleted, error } = await supabase.from('deals').delete().eq('id', id).select('id');
   if (error) return res.status(400).json({ error: error.message });
   await mirrorDelete('deals', deleted);
+  await recordAudit(req.user, 'deal.delete', { entity: 'deal', entityId: id });
   return res.status(204).send();
 });
 

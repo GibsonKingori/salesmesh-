@@ -4,11 +4,14 @@ import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { FUNNEL_TRANSITIONS } from '../services/analytics.js';
 import { loadBenchmarks } from './analytics.routes.js';
+import { recordAudit } from '../services/audit.js';
 
 const router = express.Router();
 router.use(requireAuth);
 router.use(requireRole('manager', 'admin'));
 
+// System Configuration is an Administrator use case (Chapter 4): managers can read
+// the targets, which drive their funnel warnings, but only admins change them.
 // GET /api/settings/benchmarks — every transition, with its target rate or null if unset
 router.get('/benchmarks', async (req, res) => {
   try {
@@ -23,7 +26,7 @@ router.get('/benchmarks', async (req, res) => {
 
 // PUT /api/settings/benchmarks — body { rates: { 'lead->qualified': 0.5, 'negotiation->won': null } }
 // A number (0–1) sets the target; null clears it.
-router.put('/benchmarks', async (req, res) => {
+router.put('/benchmarks', requireRole('admin'), async (req, res) => {
   const rates = req.body?.rates;
   if (!rates || typeof rates !== 'object') {
     return res.status(400).json({ error: 'rates object is required' });
@@ -57,6 +60,7 @@ router.put('/benchmarks', async (req, res) => {
     await mirrorDelete('funnel_benchmarks', data);
   }
 
+  await recordAudit(req.user, 'settings.benchmarks_update', { entity: 'settings', details: { rates } });
   const saved = await loadBenchmarks();
   return res.json({
     benchmarks: FUNNEL_TRANSITIONS.map((transition) => ({ transition, rate: saved[transition] ?? null })),

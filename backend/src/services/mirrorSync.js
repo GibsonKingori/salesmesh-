@@ -4,7 +4,7 @@ import { supabase } from '../config/supabaseClient.js';
 import { pool, PRIMARY_KEYS, upsertRows, deleteRows } from '../config/postgresClient.js';
 
 // Parents before children so foreign keys resolve on insert
-export const TABLES = ['users', 'contacts', 'campaigns', 'deals', 'activities', 'funnel_benchmarks'];
+export const TABLES = ['users', 'contacts', 'campaigns', 'deals', 'activities', 'funnel_benchmarks', 'audit_logs', 'password_resets'];
 const PAGE = 1000;
 
 async function fetchSupabase(table) {

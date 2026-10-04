@@ -10,6 +10,7 @@ import activitiesRoutes from './routes/activities.routes.js';
 import campaignsRoutes from './routes/campaigns.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 
 // Express app without a listening socket, so route tests can drive it with Supertest
 const app = express();
@@ -31,6 +32,7 @@ app.use('/api/activities', activitiesRoutes);
 app.use('/api/campaigns', campaignsRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

@@ -3,6 +3,7 @@ import { supabase } from '../config/supabaseClient.js';
 import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth } from '../middleware/auth.js';
 import { canEditDeal } from '../services/dealUpdates.js';
+import { recordAudit } from '../services/audit.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -36,6 +37,7 @@ router.post('/', async (req, res) => {
 
   if (error) return res.status(400).json({ error: error.message });
   await mirrorUpsert('contacts', data);
+  await recordAudit(req.user, 'contact.create', { entity: 'contact', entityId: data.id, details: { name: data.name } });
   return res.status(201).json({ contact: data });
 });
 
@@ -79,6 +81,7 @@ router.patch('/:id', async (req, res) => {
 
   if (error) return res.status(400).json({ error: error.message });
   await mirrorUpsert('contacts', data);
+  await recordAudit(req.user, 'contact.update', { entity: 'contact', entityId: data.id, details: { name: data.name } });
   return res.json({ contact: data });
 });
 
@@ -96,6 +99,7 @@ router.delete('/:id', async (req, res) => {
   if (error) return res.status(400).json({ error: error.message });
   // deals.contact_id is "on delete set null" in both databases, so linked deals stay in step
   await mirrorDelete('contacts', deleted);
+  await recordAudit(req.user, 'contact.delete', { entity: 'contact', entityId: id });
   return res.status(204).send();
 });
 

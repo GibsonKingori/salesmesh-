@@ -1,7 +1,8 @@
 import express from 'express';
 import { supabase } from '../config/supabaseClient.js';
 import { mirrorUpsert } from '../config/postgresClient.js';
-import { requireAuth, requireRole } from '../middleware/auth.js';
+import { requireAuth, requireRole, forgetAccount } from '../middleware/auth.js';
+import { recordAudit } from '../services/audit.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -17,7 +18,8 @@ router.get('/team', requireRole('manager', 'admin'), async (req, res) => {
 router.use(requireRole('admin'));
 
 const ROLES = ['representative', 'manager', 'admin'];
-const PUBLIC_COLUMNS = 'id, name, email, role, created_at';
+const PUBLIC_COLUMNS = 'id, name, email, role, is_active, created_at';
+const publicUser = ({ id, name, email, role, is_active, created_at }) => ({ id, name, email, role, is_active, created_at });
 
 // GET /api/users — admin only: everyone who can sign in, with their role
 router.get('/', async (req, res) => {
@@ -40,13 +42,42 @@ router.patch('/:id/role', async (req, res) => {
     return res.status(400).json({ error: 'You cannot change your own role' });
   }
 
+  const { data: before } = await supabase.from('users').select('role').eq('id', id).maybeSingle();
   const { data, error } = await supabase.from('users').update({ role }).eq('id', id).select().maybeSingle();
   if (error) return res.status(400).json({ error: error.message });
   if (!data) return res.status(404).json({ error: 'User not found' });
 
   await mirrorUpsert('users', data);
-  const { id: savedId, name, email, role: savedRole, created_at } = data;
-  return res.json({ user: { id: savedId, name, email, role: savedRole, created_at } });
+  forgetAccount(id);
+  await recordAudit(req.user, 'user.role_change', {
+    entity: 'user',
+    entityId: id,
+    details: { name: data.name, from: before?.role ?? null, to: data.role },
+  });
+  return res.json({ user: publicUser(data) });
+});
+
+// PATCH /api/users/:id/status — admin only: body { active: true | false }.
+// A disabled user can't log in, and any session they have open stops working.
+router.patch('/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { active } = req.body;
+
+  if (typeof active !== 'boolean') {
+    return res.status(400).json({ error: 'active must be true or false' });
+  }
+  if (id === req.user.id) {
+    return res.status(400).json({ error: 'You cannot disable your own account' });
+  }
+
+  const { data, error } = await supabase.from('users').update({ is_active: active }).eq('id', id).select().maybeSingle();
+  if (error) return res.status(400).json({ error: error.message });
+  if (!data) return res.status(404).json({ error: 'User not found' });
+
+  await mirrorUpsert('users', data);
+  forgetAccount(id);
+  await recordAudit(req.user, active ? 'user.enable' : 'user.disable', { entity: 'user', entityId: id, details: { name: data.name } });
+  return res.json({ user: publicUser(data) });
 });
 
 export default router;
