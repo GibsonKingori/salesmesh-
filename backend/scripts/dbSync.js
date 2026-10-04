@@ -4,34 +4,8 @@
 //   node scripts/dbSync.js verify  — compare both databases row-by-row; exits 1 on any difference
 import { readFile } from 'node:fs/promises';
 import pg from 'pg';
-import { supabase } from '../src/config/supabaseClient.js';
-import { pool, PRIMARY_KEYS, upsertRows, deleteRows } from '../src/config/postgresClient.js';
-
-// Parents before children so foreign keys resolve on insert
-const TABLES = ['users', 'contacts', 'campaigns', 'deals', 'activities', 'funnel_benchmarks'];
-const PAGE = 1000;
-
-async function fetchSupabase(table) {
-  const rows = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
-      .from(table)
-      .select('*')
-      .order(PRIMARY_KEYS[table])
-      .range(from, from + PAGE - 1);
-    if (error) throw new Error(`Supabase ${table}: ${error.message}`);
-    rows.push(...data);
-    if (data.length < PAGE) return rows;
-  }
-}
-
-// row_to_json renders values the same way PostgREST does, so rows compare directly
-async function fetchPostgres(table, client = pool) {
-  const { rows } = await client.query(`select row_to_json(t)::text as j from "${table}" t`);
-  return rows.map((r) => JSON.parse(r.j));
-}
-
-const canonical = (row) => JSON.stringify(Object.keys(row).sort().map((k) => [k, row[k]]));
+import { pool } from '../src/config/postgresClient.js';
+import { syncAll, compareAll } from '../src/services/mirrorSync.js';
 
 // Creates the target database (UTF8, whatever the Windows locale default is) if it doesn't exist
 async function ensureDatabase() {
@@ -65,51 +39,20 @@ async function setup() {
 }
 
 async function sync() {
-  const remote = {};
-  for (const table of TABLES) remote[table] = await fetchSupabase(table);
-
-  const client = await pool.connect();
-  try {
-    await client.query('begin');
-    for (const table of TABLES) {
-      const rows = remote[table];
-      for (let i = 0; i < rows.length; i += 500) await upsertRows(table, rows.slice(i, i + 500), client);
-    }
-    // Children first when removing, so no row is deleted out from under a reference
-    for (const table of [...TABLES].reverse()) {
-      const pk = PRIMARY_KEYS[table];
-      const keep = new Set(remote[table].map((r) => String(r[pk])));
-      const local = await fetchPostgres(table, client);
-      const stale = local.filter((r) => !keep.has(String(r[pk]))).map((r) => r[pk]);
-      await deleteRows(table, stale, client);
-      console.log(`${table.padEnd(18)} ${String(remote[table].length).padStart(6)} rows synced, ${stale.length} stale removed`);
-    }
-    await client.query('commit');
-  } catch (err) {
-    await client.query('rollback');
-    throw err;
-  } finally {
-    client.release();
+  for (const { table, synced, removed } of await syncAll()) {
+    console.log(`${table.padEnd(18)} ${String(synced).padStart(6)} rows synced, ${removed} stale removed`);
   }
 }
 
 async function verify() {
-  let mismatched = 0;
-  for (const table of TABLES) {
-    const pk = PRIMARY_KEYS[table];
-    const [remote, local] = await Promise.all([fetchSupabase(table), fetchPostgres(table)]);
-    const localByKey = new Map(local.map((r) => [String(r[pk]), canonical(r)]));
-    const remoteKeys = new Set(remote.map((r) => String(r[pk])));
-    const missing = remote.filter((r) => !localByKey.has(String(r[pk]))).length;
-    const differing = remote.filter((r) => localByKey.has(String(r[pk])) && localByKey.get(String(r[pk])) !== canonical(r)).length;
-    const extra = local.filter((r) => !remoteKeys.has(String(r[pk]))).length;
-    const ok = !missing && !differing && !extra;
-    if (!ok) mismatched++;
+  const results = await compareAll();
+  for (const r of results) {
     console.log(
-      `${ok ? 'OK  ' : 'DIFF'} ${table.padEnd(18)} supabase=${remote.length} postgres=${local.length}` +
-        (ok ? '' : `  (missing locally: ${missing}, different: ${differing}, extra locally: ${extra})`)
+      `${r.ok ? 'OK  ' : 'DIFF'} ${r.table.padEnd(18)} supabase=${r.supabase} postgres=${r.postgres}` +
+        (r.ok ? '' : `  (missing locally: ${r.missing}, different: ${r.differing}, extra locally: ${r.extra})`)
     );
   }
+  const mismatched = results.filter((r) => !r.ok).length;
   if (mismatched) {
     console.log(`\n${mismatched} table(s) out of sync — run "npm run db:sync".`);
     process.exitCode = 1;

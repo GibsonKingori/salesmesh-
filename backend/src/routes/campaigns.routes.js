@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../config/supabaseClient.js';
 import { mirrorUpsert } from '../config/postgresClient.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import { recordAudit } from '../services/audit.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -15,7 +16,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/campaigns — manager/admin only: campaigns hold budget data
 router.post('/', requireRole('manager', 'admin'), async (req, res) => {
-  const { name, budget, start_date, end_date } = req.body;
+  const { name, budget, start_date, end_date, channel } = req.body;
 
   if (!name) {
     return res.status(400).json({ error: 'name is required' });
@@ -29,6 +30,7 @@ router.post('/', requireRole('manager', 'admin'), async (req, res) => {
         budget: budget != null ? budget : 0,
         start_date: start_date || null,
         end_date: end_date || null,
+        channel: channel?.trim() || null,
         created_by: req.user.id,
       },
     ])
@@ -37,6 +39,7 @@ router.post('/', requireRole('manager', 'admin'), async (req, res) => {
 
   if (error) return res.status(400).json({ error: error.message });
   await mirrorUpsert('campaigns', data);
+  await recordAudit(req.user, 'campaign.create', { entity: 'campaign', entityId: data.id, details: { name: data.name, budget: data.budget } });
   return res.status(201).json({ campaign: data });
 });
 

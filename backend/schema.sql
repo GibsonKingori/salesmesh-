@@ -32,6 +32,7 @@ create table if not exists campaigns (
   budget numeric(12,2) not null default 0,
   start_date date,
   end_date date,
+  channel text, -- e.g. social media, radio, SMS, email (ERD: Campaign.channel)
   created_by uuid references users(id) on delete set null,
   created_at timestamptz not null default now()
 );
@@ -94,3 +95,45 @@ create table if not exists funnel_benchmarks (
 
 alter table funnel_benchmarks enable row level security;
 revoke all on funnel_benchmarks from anon, authenticated;
+
+-- Databases created before campaigns had a channel column
+alter table campaigns add column if not exists channel text;
+
+-- AUDIT LOG -----------------------------------------------------------
+-- Who did what, shown to admins on the Audit Log page (Chapter 4 use case).
+-- Rows are only ever inserted by the API; nothing updates or deletes them.
+create table if not exists audit_logs (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid references users(id) on delete set null,
+  user_name text,
+  action text not null,
+  entity text,
+  entity_id text,
+  details jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_audit_logs_created on audit_logs(created_at desc);
+
+alter table audit_logs enable row level security;
+revoke all on audit_logs from anon, authenticated;
+
+-- ACCOUNT STATUS & PASSWORD RESETS -------------------------------------
+-- Admins can disable an account; a disabled user can't log in and their open
+-- sessions stop working on the next request.
+alter table users add column if not exists is_active boolean not null default true;
+
+-- One row per "forgot password" request. Only a SHA-256 hash of the token is
+-- stored, so a database leak can't be used to reset anyone's password.
+create table if not exists password_resets (
+  id uuid primary key default uuid_generate_v4(),
+  user_id uuid not null references users(id) on delete cascade,
+  token_hash text not null unique,
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  created_by uuid references users(id) on delete set null, -- set when an admin issued the link
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_password_resets_user on password_resets(user_id);
+
+alter table password_resets enable row level security;
+revoke all on password_resets from anon, authenticated;

@@ -34,8 +34,8 @@ const Label = ({ children }) => (
 );
 
 // Side panel for one deal: edit stage/close date, link a contact, and read/write its activity log.
-// onChanged is called after any deal edit so the dashboard can re-rank.
-export default function DealDrawer({ deal: initialDeal, onClose, onChanged }) {
+// onChanged is called after any deal edit so the dashboard can re-rank; onDeleted after a delete.
+export default function DealDrawer({ deal: initialDeal, onClose, onChanged, onDeleted }) {
   const { user } = useAuth();
   const [deal, setDeal] = useState(initialDeal);
   const [activities, setActivities] = useState([]);
@@ -50,6 +50,9 @@ export default function DealDrawer({ deal: initialDeal, onClose, onChanged }) {
 
   const [addingContact, setAddingContact] = useState(false);
   const [newContact, setNewContact] = useState({ name: '', company: '', phone: '', email: '' });
+
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchActivities = () =>
     api
@@ -124,6 +127,19 @@ export default function DealDrawer({ deal: initialDeal, onClose, onChanged }) {
       }
     } catch (err) {
       setError(err.response?.data?.error || 'Could not create the contact');
+    }
+  };
+
+  const handleDeleteDeal = async () => {
+    setError('');
+    setDeleting(true);
+    try {
+      await api.delete(`/deals/${deal.id}`);
+      onDeleted();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not delete the deal');
+      setDeleting(false);
+      setConfirmDelete(false);
     }
   };
 
@@ -352,6 +368,38 @@ export default function DealDrawer({ deal: initialDeal, onClose, onChanged }) {
                   </li>
                 ))}
               </ol>
+            )}
+          </section>
+
+          <section className="border-t border-fg/10 pt-4">
+            {confirmDelete ? (
+              <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-sm">
+                <p className="text-red-700 dark:text-red-300">
+                  Delete “{deal.title}” and its whole activity history? This can't be undone.
+                </p>
+                <div className="mt-2 flex justify-end gap-2">
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    className="rounded-lg px-3 py-1.5 text-sm text-muted hover:text-fg"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDeleteDeal}
+                    disabled={deleting}
+                    className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
+                  >
+                    {deleting ? 'Deleting…' : 'Delete deal'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="text-xs font-medium text-red-700 hover:text-red-800 dark:text-red-300 dark:hover:text-red-200"
+              >
+                Delete deal
+              </button>
             )}
           </section>
         </div>
