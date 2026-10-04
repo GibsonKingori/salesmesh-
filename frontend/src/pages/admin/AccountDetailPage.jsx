@@ -12,7 +12,7 @@ import { CHANNELS } from '../../components/AddCampaignModal.jsx';
 import { ICONS } from '../../components/icons.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { ROLE_NAMES } from '../../lib/audit.js';
-import { currency, formatDate } from '../../lib/format.js';
+import { currency, currencyShort, formatDate } from '../../lib/format.js';
 import { StatusPill } from './AccountsPage.jsx';
 
 const STAGES = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
@@ -319,8 +319,8 @@ export default function AccountDetailPage() {
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Deals" value={deals.length} hint={`${openDeals.length} open`} icon={ICONS.pipeline} />
-        <StatCard label="Open value" value={currency(sum(openDeals))} hint="Not yet won or lost" icon={ICONS.open} tone="sky" />
-        <StatCard label="Won value" value={currency(sum(wonDeals))} hint={`${wonDeals.length} won`} icon={ICONS.won} tone="emerald" />
+        <StatCard label="Open value" value={currencyShort(sum(openDeals))} fullValue={currency(sum(openDeals))} hint="Not yet won or lost" icon={ICONS.open} tone="sky" />
+        <StatCard label="Won value" value={currencyShort(sum(wonDeals))} fullValue={currency(sum(wonDeals))} hint={`${wonDeals.length} won`} icon={ICONS.won} tone="emerald" />
         <StatCard label="Activities" value={activityCount} hint="Calls, emails, meetings, notes" icon={ICONS.target} tone="gold" />
       </div>
 
