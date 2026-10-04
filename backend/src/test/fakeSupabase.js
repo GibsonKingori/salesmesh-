@@ -4,6 +4,8 @@
 // Route tests use it so they never touch the real Supabase project.
 import { randomUUID } from 'node:crypto';
 
+export const MAX_ROWS = 1000;
+
 export function createFakeSupabase(seed = {}) {
   const tables = Object.fromEntries(Object.entries(seed).map(([t, rows]) => [t, rows.map((r) => ({ ...r }))]));
   const rowsOf = (table) => (tables[table] ??= []);
@@ -15,7 +17,7 @@ export function createFakeSupabase(seed = {}) {
     let columns = '*';
     let mode = 'many';
     let withCount = false;
-    let orderBy = null;
+    const orderBy = []; // several .order() calls sort by each in turn, like PostgREST
     let rangeBounds = null;
     const filters = [];
 
@@ -51,12 +53,19 @@ export function createFakeSupabase(seed = {}) {
         affected = all.filter(matches);
       }
 
-      if (orderBy) {
-        const { col, ascending } = orderBy;
-        affected = [...affected].sort((a, b) => (a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : 0) * (ascending ? 1 : -1));
+      if (orderBy.length) {
+        affected = [...affected].sort((a, b) => {
+          for (const { col, ascending } of orderBy) {
+            const diff = a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : 0;
+            if (diff) return diff * (ascending ? 1 : -1);
+          }
+          return 0;
+        });
       }
       const count = withCount ? affected.length : null;
       if (rangeBounds) affected = affected.slice(rangeBounds[0], rangeBounds[1] + 1);
+      // Like Supabase's default "max rows": a select returns at most 1,000 rows per request
+      else if (op === 'select') affected = affected.slice(0, MAX_ROWS);
 
       let data = op === 'select' || returning ? affected.map(pick) : null;
       if (mode === 'single' || mode === 'maybeSingle') {
@@ -128,7 +137,7 @@ export function createFakeSupabase(seed = {}) {
         return api;
       },
       order(col, { ascending = true } = {}) {
-        orderBy = { col, ascending };
+        orderBy.push({ col, ascending });
         return api;
       },
       range(from, to) {
