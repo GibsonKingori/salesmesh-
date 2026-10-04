@@ -72,19 +72,22 @@ export function conversionFunnel(deals, benchmarks = {}) {
   return { stages, transitions };
 }
 
+// When a won/lost deal closed
+export const closedAt = (deal) => deal.closed_at || deal.updated_at;
+
 // --- Predictive: trend-based 30/60/90-day forecast, no ML per proposal §1.6 scope note.
 // Fits a least-squares line through cumulative won-deal revenue over time, then
-// projects the resulting daily rate forward. updated_at is used as a proxy for
-// "date the deal closed" since the schema has no dedicated closed_at column. ---
+// projects the resulting daily rate forward. Uses closed_at (set when a deal is won/lost,
+// or imported from the SME's records); older rows without it fall back to updated_at. ---
 export function forecastRevenue(deals, horizonDaysList = DEFAULT_FORECAST_HORIZONS, now = new Date()) {
-  const wonDeals = deals.filter((d) => d.stage === 'won' && d.updated_at);
+  const wonDeals = deals.filter((d) => d.stage === 'won' && closedAt(d));
 
   if (wonDeals.length === 0) {
     return withHorizonList({ basis: 'no_won_deals', dailyRate: 0, ...zeroHorizons(horizonDaysList) }, horizonDaysList);
   }
 
   const points = wonDeals
-    .map((d) => ({ t: new Date(d.updated_at).getTime(), v: Number(d.value) || 0 }))
+    .map((d) => ({ t: new Date(closedAt(d)).getTime(), v: Number(d.value) || 0 }))
     .sort((a, b) => a.t - b.t);
 
   const t0 = points[0].t;
@@ -162,7 +165,7 @@ export function pipelineVelocity(deals) {
   const avgDealSize = sum(wonDeals.map((d) => Number(d.value) || 0)) / wonDeals.length;
   const winRate = wonDeals.length / closedCount;
   const cycleLengths = wonDeals.map(
-    (d) => (new Date(d.updated_at).getTime() - new Date(d.created_at).getTime()) / DAY_MS
+    (d) => (new Date(closedAt(d)).getTime() - new Date(d.created_at).getTime()) / DAY_MS
   );
   const avgSalesCycleLength = sum(cycleLengths) / cycleLengths.length;
 

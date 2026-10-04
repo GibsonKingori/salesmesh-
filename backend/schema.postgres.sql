@@ -119,3 +119,10 @@ create table if not exists password_resets (
   created_at timestamptz not null default now()
 );
 create index if not exists idx_password_resets_user on password_resets(user_id);
+
+-- CLOSE DATE ------------------------------------------------------------
+-- When a deal was won or lost. Set by the API on the stage change (or from the
+-- SME's records on CSV import) and not touched by later edits, so the forecast
+-- and sales velocity use the real close date.
+alter table deals add column if not exists closed_at timestamptz;
+update deals set closed_at = updated_at where stage in ('won', 'lost') and closed_at is null;

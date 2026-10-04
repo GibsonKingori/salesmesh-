@@ -1,6 +1,7 @@
 import express from 'express';
 import { supabase } from '../config/supabaseClient.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import { fetchAll } from '../services/fetchAll.js';
 import {
   descriptiveSummary,
   conversionFunnel,
@@ -31,7 +32,7 @@ async function pipelineAnalytics(deals) {
 
 // GET /api/analytics/pipeline — descriptive + diagnostic + predictive, team-wide
 router.get('/pipeline', requireRole('manager', 'admin'), async (req, res) => {
-  const { data: deals, error } = await supabase.from('deals').select('*');
+  const { data: deals, error } = await fetchAll(() => supabase.from('deals').select('*').order('id'));
   if (error) return res.status(400).json({ error: error.message });
 
   try {
@@ -43,7 +44,7 @@ router.get('/pipeline', requireRole('manager', 'admin'), async (req, res) => {
 
 // GET /api/analytics/me — the same analytics, scoped to the caller's own deals
 router.get('/me', async (req, res) => {
-  const { data: deals, error } = await supabase.from('deals').select('*').eq('owner_id', req.user.id);
+  const { data: deals, error } = await fetchAll(() => supabase.from('deals').select('*').eq('owner_id', req.user.id).order('id'));
   if (error) return res.status(400).json({ error: error.message });
 
   try {
@@ -56,8 +57,8 @@ router.get('/me', async (req, res) => {
 // GET /api/analytics/campaigns — CPA/ROI per campaign
 router.get('/campaigns', requireRole('manager', 'admin'), async (req, res) => {
   const [{ data: campaigns, error: campaignsError }, { data: deals, error: dealsError }] = await Promise.all([
-    supabase.from('campaigns').select('*').order('created_at', { ascending: false }),
-    supabase.from('deals').select('*'),
+    fetchAll(() => supabase.from('campaigns').select('*').order('created_at', { ascending: false }).order('id')),
+    fetchAll(() => supabase.from('deals').select('*').order('id')),
   ]);
   if (campaignsError) return res.status(400).json({ error: campaignsError.message });
   if (dealsError) return res.status(400).json({ error: dealsError.message });
@@ -76,8 +77,8 @@ router.get('/campaigns', requireRole('manager', 'admin'), async (req, res) => {
 // how the caller's own deals from each campaign are doing. Budget, CPA and ROI stay manager-only.
 router.get('/campaigns/me', async (req, res) => {
   const [{ data: campaigns, error: campaignsError }, { data: deals, error: dealsError }] = await Promise.all([
-    supabase.from('campaigns').select('id, name, channel, start_date, end_date').order('created_at', { ascending: false }),
-    supabase.from('deals').select('id, campaign_id, stage, value').eq('owner_id', req.user.id),
+    fetchAll(() => supabase.from('campaigns').select('id, name, channel, start_date, end_date').order('created_at', { ascending: false }).order('id')),
+    fetchAll(() => supabase.from('deals').select('id, campaign_id, stage, value').eq('owner_id', req.user.id).order('id')),
   ]);
   if (campaignsError) return res.status(400).json({ error: campaignsError.message });
   if (dealsError) return res.status(400).json({ error: dealsError.message });

@@ -4,8 +4,9 @@ import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { MIN_PASSWORD_LENGTH } from './auth.routes.js';
 import { recordAudit } from '../services/audit.js';
+import { fetchAll } from '../services/fetchAll.js';
 import { createResetToken, RESET_TOKEN_MINUTES } from '../services/passwordReset.js';
-import { VALID_STAGES } from '../services/dealUpdates.js';
+import { VALID_STAGES, closedAtForStageChange } from '../services/dealUpdates.js';
 
 // Administrator use cases from Chapter 4: System Configuration, Audit Log, and looking
 // after individual accounts. (Role and enable/disable changes live in users.routes.js.)
@@ -25,7 +26,7 @@ const isIsoDate = (v) => typeof v === 'string' && !Number.isNaN(Date.parse(v));
 router.get('/overview', async (req, res) => {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const [users, recentAudit, failedLogins, ...counts] = await Promise.all([
-    supabase.from('users').select('id, name, email, role, is_active, created_at').order('created_at', { ascending: false }),
+    fetchAll(() => supabase.from('users').select('id, name, email, role, is_active, created_at').order('created_at', { ascending: false }).order('id')),
     supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).range(0, 7),
     supabase.from('audit_logs').select('id', { count: 'exact' }).eq('action', 'auth.login_failed').gte('created_at', since),
     ...COUNTED_TABLES.map((t) => supabase.from(t).select('id', { count: 'exact' })),
@@ -116,8 +117,8 @@ router.get('/users/:id', async (req, res) => {
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const [deals, created, activities, audit] = await Promise.all([
-      supabase.from('deals').select('*').eq('owner_id', user.id).order('created_at', { ascending: false }),
-      supabase.from('campaigns').select('*').eq('created_by', user.id),
+      fetchAll(() => supabase.from('deals').select('*').eq('owner_id', user.id).order('created_at', { ascending: false }).order('id')),
+      fetchAll(() => supabase.from('campaigns').select('*').eq('created_by', user.id).order('id')),
       supabase.from('activities').select('id', { count: 'exact' }).eq('user_id', user.id),
       supabase.from('audit_logs').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).range(0, 9),
     ]);
@@ -176,6 +177,7 @@ router.post('/users/:id/deals', async (req, res) => {
           expected_close_date: expected_close_date || null,
           campaign_id: campaign_id || null,
           owner_id: owner.id,
+          closed_at: closedAtForStageChange(null, stage) ?? null,
         },
       ])
       .select()

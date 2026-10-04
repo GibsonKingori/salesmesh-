@@ -3,6 +3,7 @@ import { supabase } from '../config/supabaseClient.js';
 import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth } from '../middleware/auth.js';
 import { canEditDeal } from '../services/dealUpdates.js';
+import { fetchAll } from '../services/fetchAll.js';
 import { recordAudit } from '../services/audit.js';
 
 const router = express.Router();
@@ -10,13 +11,12 @@ router.use(requireAuth);
 
 // GET /api/contacts — manager/admin see all contacts, rep sees only their own
 router.get('/', async (req, res) => {
-  let query = supabase.from('contacts').select('*').order('created_at', { ascending: false });
+  const buildQuery = () => {
+    const query = supabase.from('contacts').select('*').order('created_at', { ascending: false }).order('id');
+    return req.user.role === 'representative' ? query.eq('owner_id', req.user.id) : query;
+  };
 
-  if (req.user.role === 'representative') {
-    query = query.eq('owner_id', req.user.id);
-  }
-
-  const { data, error } = await query;
+  const { data, error } = await fetchAll(buildQuery);
   if (error) return res.status(400).json({ error: error.message });
   return res.json({ contacts: data });
 });

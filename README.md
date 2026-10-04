@@ -67,7 +67,20 @@ On the **Register** tab, anyone can sign up as a **Sales Rep**. Choosing **Manag
 - **Sales Manager** (`/manager`): team KPIs, pipeline and campaign analytics, deals, contacts, and **Export report** (CSV) on the Overview and Campaigns pages.
 - **Administrator** (`/admin`): system overview with account search, **Accounts** (search, change roles, enable/disable, and open an account to add or delete its deals and campaigns), **System configuration** (conversion targets plus server settings) and the **Audit log** (filter by day, person and area; export to CSV).
 
-### Disabled accounts
+### Importing an SME's records
+Use **Deals → Import CSV**. The app checks the file first and shows what it will do (deals, total value, stages, new contacts, skipped rows and why). Nothing is saved until you confirm. The template is `sample-data/deals-import-template.csv`.
+
+For accurate results:
+1. **Set up first:** create every salesperson's account, and create the campaigns (name, budget, channel, dates) on the Campaigns page. The import links deals to campaigns by name, and owners by email or full name.
+2. **One row per deal:** `title`, `value` and `stage` are required. Stage can be lead, qualified, proposal, negotiation, won or lost; everyday words like "Quote sent" or "Closed won" are understood.
+3. **Real dates:** include `created_date` (when the enquiry came in) and, for won/lost deals, `closed_date`. Dates can be DD/MM/YYYY or YYYY-MM-DD. Without them the deal counts as created or closed on the import day, which skews the forecast and sales cycle.
+4. **Customers:** `contact_name` and `company` create a contact once and reuse it across rows.
+5. **Save from Excel as "CSV UTF-8"**, run the check, fix any skipped rows, and import.
+6. **Check once:** compare the Overview's won value, deal count and win rate with a spreadsheet total of the same file.
+
+A deal's close date (`closed_at`) is recorded when it moves to won or lost and isn't changed by later edits.
+
+
 A disabled user can't log in, and any session they already have stops working within about 15 seconds. Role changes also apply on the user's next request.
 
 ### Forgotten passwords
