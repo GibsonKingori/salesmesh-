@@ -4,7 +4,7 @@ import { supabase } from '../config/supabaseClient.js';
 import { pool, PRIMARY_KEYS, upsertRows, deleteRows } from '../config/postgresClient.js';
 
 // Parents before children so foreign keys resolve on insert
-export const TABLES = ['users', 'contacts', 'campaigns', 'deals', 'activities', 'funnel_benchmarks', 'audit_logs', 'password_resets'];
+export const TABLES = ['companies', 'users', 'contacts', 'campaigns', 'deals', 'activities', 'funnel_benchmarks', 'audit_logs', 'password_resets'];
 const PAGE = 1000;
 
 async function fetchSupabase(table) {
@@ -39,7 +39,8 @@ export async function syncAll() {
   try {
     await client.query('begin');
     for (const table of TABLES) {
-      const rows = remote[table];
+      // users.manager_id points at another user: managers (no manager_id) go in before their reps
+      const rows = table === 'users' ? [...remote.users].sort((a, b) => Boolean(a.manager_id) - Boolean(b.manager_id)) : remote[table];
       for (let i = 0; i < rows.length; i += 500) await upsertRows(table, rows.slice(i, i + 500), client);
     }
     // Children first when removing, so no row is deleted out from under a reference

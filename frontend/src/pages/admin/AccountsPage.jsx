@@ -18,16 +18,17 @@ const STATUS_FILTERS = [
   { value: '', label: 'Any status' },
   { value: 'active', label: 'Active' },
   { value: 'disabled', label: 'Disabled' },
+  { value: 'unassigned', label: 'Reps without a manager' },
 ];
 
 // What each role can do, following the Chapter 4 use case diagram
 const PERMISSIONS = [
-  { label: 'View dashboard & KPIs', rep: 'Own deals', manager: 'Whole team', admin: '—' },
-  { label: 'Manage deals & log activities', rep: 'Own deals', manager: 'All deals', admin: 'Any account' },
-  { label: 'Pipeline analytics', rep: 'Own pipeline', manager: 'Whole team', admin: '—' },
-  { label: 'Campaign analytics', rep: 'Own results', manager: 'Budget, CPA, ROI', admin: 'Any account' },
+  { label: 'View dashboard & KPIs', rep: 'Own deals', manager: 'Their team', admin: '—' },
+  { label: 'Manage deals & log activities', rep: 'Own deals', manager: 'Their team’s deals', admin: 'Any account' },
+  { label: 'Pipeline analytics', rep: 'Own pipeline', manager: 'Their team', admin: '—' },
+  { label: 'Campaign analytics', rep: 'Own results', manager: 'Budget, CPA, ROI (team’s deals)', admin: 'Any account' },
   { label: 'Export reports', rep: '—', manager: 'Yes', admin: '—' },
-  { label: 'Manage accounts, roles & permissions', rep: '—', manager: '—', admin: 'Yes' },
+  { label: 'Manage accounts, roles, permissions & teams', rep: '—', manager: '—', admin: 'Yes' },
   { label: 'System configuration', rep: '—', manager: 'View targets', admin: 'Yes' },
   { label: 'Audit log', rep: '—', manager: '—', admin: 'Yes' },
 ];
@@ -96,19 +97,32 @@ export default function AccountsPage() {
       (u) =>
         (!q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)) &&
         (!roleFilter || u.role === roleFilter) &&
-        (!statusFilter || (statusFilter === 'active') === (u.is_active !== false))
+        (!statusFilter ||
+          (statusFilter === 'unassigned' ? u.role === 'representative' && !u.manager_id : (statusFilter === 'active') === (u.is_active !== false)))
     );
   }, [users, query, roleFilter, statusFilter]);
 
-  const replaceUser = (updated) => setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+  const managers = useMemo(() => users.filter((u) => u.role === 'manager'), [users]);
+  const teamSize = useMemo(() => {
+    const counts = {};
+    users.forEach((u) => u.manager_id && (counts[u.manager_id] = (counts[u.manager_id] || 0) + 1));
+    return counts;
+  }, [users]);
+
+  // A role change can also leave a demoted manager's reps unassigned; the API returns them too
+  const replaceUsers = (updated) => {
+    const byId = new Map(updated.map((u) => [u.id, u]));
+    setUsers((prev) => prev.map((u) => byId.get(u.id) || u));
+  };
 
   const run = async (member, action, success) => {
     setError('');
     setNotice('');
     setSavingId(member.id);
     try {
-      replaceUser((await action()).data.user);
-      setNotice(success);
+      const { data } = await action();
+      replaceUsers([data.user, ...(data.unassigned || [])]);
+      setNotice(typeof success === 'function' ? success(data) : success);
     } catch (err) {
       setError(err.response?.data?.error || 'Could not save the change');
     } finally {
@@ -117,7 +131,16 @@ export default function AccountsPage() {
   };
 
   const changeRole = (member, role) =>
-    run(member, () => api.patch(`/users/${member.id}/role`, { role }), `${member.name} is now ${ROLE_NAMES[role]}.`);
+    run(member, () => api.patch(`/users/${member.id}/role`, { role }), (data) => {
+      const left = data.unassigned?.length;
+      return `${member.name} is now ${ROLE_NAMES[role]}.${left ? ` ${left} of their rep${left === 1 ? '' : 's'} now need${left === 1 ? 's' : ''} a new manager.` : ''}`;
+    });
+  const changeManager = (member, managerId) =>
+    run(
+      member,
+      () => api.patch(`/users/${member.id}/manager`, { manager_id: managerId || null }),
+      managerId ? `${member.name} is now in ${managers.find((m) => m.id === managerId)?.name}’s team.` : `${member.name} has no manager now.`
+    );
   const setActive = (member, active) =>
     run(
       member,
@@ -130,7 +153,7 @@ export default function AccountsPage() {
   return (
     <DashboardShell title="Accounts">
       <div className="space-y-4">
-        <Panel title="Accounts" subtitle="Search for anyone, change their role, or disable their account">
+        <Panel title="Accounts" subtitle="Search for anyone, change their role or manager, or disable their account">
           <div className="space-y-3 border-b border-fg/10 px-5 py-4">
             <div className="relative">
               <SearchIcon />
@@ -191,9 +214,28 @@ export default function AccountsPage() {
                       </p>
                       <p className="truncate text-xs text-subtle">
                         {member.email} · joined {formatDate(member.created_at)}
+                        {member.role === 'manager' && ` · ${teamSize[member.id] || 0} rep${teamSize[member.id] === 1 ? '' : 's'}`}
                       </p>
                     </Link>
                     <StatusPill active={active} />
+                    {member.role === 'representative' && (
+                      <select
+                        aria-label={`Manager for ${member.name}`}
+                        value={member.manager_id || ''}
+                        disabled={busy}
+                        onChange={(e) => changeManager(member, e.target.value)}
+                        className={`${selectClass} ${member.manager_id ? '' : 'text-accent-600 dark:text-accent-300'}`}
+                      >
+                        <option value="" className="bg-surface">
+                          {managers.length ? 'No manager' : 'No managers yet'}
+                        </option>
+                        {managers.map((m) => (
+                          <option key={m.id} value={m.id} className="bg-surface">
+                            Manager: {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <select
                       aria-label={`Role for ${member.name}`}
                       value={member.role}
@@ -234,7 +276,8 @@ export default function AccountsPage() {
 
           {!loading && users.length > 0 && (
             <p className="border-t border-fg/10 px-5 py-3 text-xs text-subtle">
-              Showing {visible.length} of {users.length} accounts. Role and status changes apply immediately.
+              Showing {visible.length} of {users.length} accounts. Role, manager and status changes apply immediately. A manager
+              sees only the reps assigned to them.
             </p>
           )}
         </Panel>

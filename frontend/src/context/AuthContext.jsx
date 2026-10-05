@@ -17,8 +17,9 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
-  const register = async (name, email, password, role, adminCode) => {
-    await api.post('/auth/register', { name, email, password, role, adminCode });
+  // company is { joinCode } to join an existing company, or { companyName } to start one
+  const register = async (name, email, password, company) => {
+    await api.post('/auth/register', { name, email, password, ...company });
     return login(email, password);
   };
 

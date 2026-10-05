@@ -29,6 +29,10 @@ describe('parseMoney', () => {
     ['KES 1,250,000.50', 1250000.5],
     ['Ksh 500', 500],
     ['1 200', 1200],
+    ['Ksh 1,500/=', 1500],
+    ['Kshs. 2,000', 2000],
+    ['50k', 50000],
+    ['1.2M', 1200000],
   ])('%s -> %d', (raw, expected) => expect(parseMoney(raw)).toBe(expected));
 
   test.each(['', 'about 5k', '12-500', undefined])('rejects %s', (raw) => expect(parseMoney(raw)).toBeNaN());
@@ -43,10 +47,20 @@ describe('parseDate', () => {
     expect(parseDate('')).toBe('');
   });
 
-  test('rejects dates that do not exist or are month-first', () => {
+  test('reads written-out dates, times, month-first dates that can only be month-first, and Excel day numbers', () => {
+    expect(parseDate('14 March 2026')).toBe('2026-03-14');
+    expect(parseDate('Mar 14, 2026')).toBe('2026-03-14');
+    expect(parseDate('14-Mar-26')).toBe('2026-03-14');
+    expect(parseDate('14/03/2026 10:30')).toBe('2026-03-14');
+    expect(parseDate('2026-03-14T08:00:00Z')).toBe('2026-03-14');
+    expect(parseDate('03/14/2026')).toBe('2026-03-14');
+    expect(parseDate('46095')).toBe('2026-03-14');
+  });
+
+  test('rejects dates that do not exist or have no year', () => {
     expect(parseDate('31/02/2026')).toBeNull();
-    expect(parseDate('03/14/2026')).toBeNull();
     expect(parseDate('March 14')).toBeNull();
+    expect(parseDate('soon')).toBeNull();
   });
 });
 
@@ -62,18 +76,41 @@ describe('parseStage', () => {
 describe('readDealRow', () => {
   const base = { title: 'Order', value: '1000', stage: 'won', created_date: '01/03/2026', closed_date: '15/03/2026' };
 
-  test('accepts a complete row', () => {
-    expect(readDealRow(base, TODAY).row).toMatchObject({ stage: 'won', value: 1000, created_date: '2026-03-01', closed_date: '2026-03-15' });
+  test('accepts a complete row without assuming anything', () => {
+    const { row, fixes } = readDealRow(base, TODAY);
+    expect(row).toMatchObject({ stage: 'won', value: 1000, created_date: '2026-03-01', closed_date: '2026-03-15' });
+    expect(fixes).toEqual([]);
   });
 
   test.each([
-    [{ closed_date: '01/02/2026' }, 'before created'],
     [{ closed_date: '01/12/2026' }, 'future'],
-    [{ stage: 'proposal' }, 'only won or lost'],
-    [{ value: 'lots' }, 'Invalid value'],
-    [{ created_date: '30/02/2026' }, 'Invalid created date'],
+    [{ created_date: '01/12/2026', closed_date: '' }, 'future'],
+    [{ value: 'lots' }, "Can't read the amount"],
+    [{ title: '', value: '', company: '', contact_name: '' }, 'No deal details'],
   ])('rejects %o', (change, message) => {
     expect(readDealRow({ ...base, ...change }, TODAY).error).toMatch(message);
+  });
+
+  test('fills in what a simple sales record leaves out', () => {
+    const { row, fixes } = readDealRow({ company: 'Kamau Builders', created_date: '05/03/2026' }, TODAY, { rowNum: 7 });
+    expect(row).toMatchObject({ title: 'Sale – Kamau Builders', value: 0, stage: 'won', created_date: '2026-03-05', closed_date: '2026-03-05' });
+    expect(fixes).toEqual(['generatedTitle', 'blankValue', 'defaultedStage', 'closedFromCreated']);
+    expect(readDealRow({ value: '500' }, TODAY, { rowNum: 7 }).row.title).toBe('Sale (row 7)');
+  });
+
+  test("uses the business's own status words, then the default stage", () => {
+    expect(readDealRow({ ...base, stage: 'Mzigo umefika' }, TODAY, { stageMap: { 'mzigo umefika': 'won' } }).row.stage).toBe('won');
+    const unknown = readDealRow({ title: 'A', value: '1', stage: 'hmm' }, TODAY, { defaultStage: 'lead' });
+    expect(unknown.row.stage).toBe('lead');
+    expect(unknown.fixes).toContain('unknownStage');
+  });
+
+  test('repairs date problems instead of skipping the deal', () => {
+    expect(readDealRow({ ...base, closed_date: '01/02/2026' }, TODAY).row).toMatchObject({ created_date: '2026-02-01', closed_date: '2026-02-01' });
+    expect(readDealRow({ ...base, stage: 'proposal' }, TODAY).row).toMatchObject({ stage: 'proposal', closed_date: '' });
+    const bad = readDealRow({ ...base, created_date: '30/02/2026' }, TODAY);
+    expect(bad.row.created_date).toBe('');
+    expect(bad.fixes).toContain('badDate');
   });
 
   test('a single "close date" column is the actual date for won deals and the expected date for open ones', () => {

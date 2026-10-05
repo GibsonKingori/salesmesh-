@@ -12,7 +12,7 @@ const LOGGABLE_TYPES = ['call', 'email', 'meeting', 'note'];
 
 // Returns the deal if the user may see it, otherwise null (callers answer 404 either way)
 async function findAccessibleDeal(user, dealId) {
-  const { data, error } = await supabase.from('deals').select('id, owner_id').eq('id', dealId).maybeSingle();
+  const { data, error } = await supabase.from('deals').select('id, owner_id, company_id').eq('id', dealId).maybeSingle();
   if (error) throw error;
   return data && canEditDeal(user, data) ? data : null;
 }
@@ -69,7 +69,8 @@ router.post('/', async (req, res) => {
 });
 
 // DELETE /api/activities/:id — remove a logged activity (correction). Reps can only
-// remove entries they wrote; nobody can remove stage_change history.
+// remove entries they wrote, managers those on their team's deals; nobody can remove
+// stage_change history.
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
 
@@ -80,8 +81,16 @@ router.delete('/:id', async (req, res) => {
     .maybeSingle();
   if (fetchError) return res.status(400).json({ error: fetchError.message });
 
+  // The deal must be one the user can see (their own company and team), and reps can
+  // only remove what they wrote themselves
   const isManager = ['manager', 'admin'].includes(req.user.role);
-  if (!activity || (!isManager && activity.user_id !== req.user.id)) {
+  let deal;
+  try {
+    deal = activity && (await findAccessibleDeal(req.user, activity.deal_id));
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  if (!deal || (!isManager && activity.user_id !== req.user.id)) {
     return res.status(404).json({ error: 'Activity not found' });
   }
   if (activity.type === 'stage_change') {

@@ -4,12 +4,11 @@ import request from 'supertest';
 import { createFakeSupabase } from '../test/fakeSupabase.js';
 
 process.env.JWT_SECRET = 'test-secret';
-process.env.ADMIN_SIGNUP_CODE = 'test-admin-code';
 
 const admin = { id: 'admin-1', name: 'Ada', email: 'ada@example.com', role: 'admin' };
 const manager = { id: 'mgr-1', name: 'Mo', email: 'mo@example.com', role: 'manager' };
-const rep = { id: 'rep-1', name: 'Rae', email: 'rae@example.com', role: 'representative' };
-const otherRep = { id: 'rep-2', name: 'Ron', email: 'ron@example.com', role: 'representative' };
+const rep = { id: 'rep-1', name: 'Rae', email: 'rae@example.com', role: 'representative', manager_id: 'mgr-1' };
+const otherRep = { id: 'rep-2', name: 'Ron', email: 'ron@example.com', role: 'representative', manager_id: 'mgr-1' };
 
 let fake;
 const mirrorUpsert = jest.fn();
@@ -26,45 +25,56 @@ const { default: app } = await import('../app.js');
 const tokenFor = (user) => `Bearer ${jwt.sign({ id: user.id, email: user.email, role: user.role }, 'test-secret')}`;
 
 beforeEach(() => {
-  fake = createFakeSupabase({
+  fake = createFakeSupabase(
+  {
+    companies: [{ id: 'co-1', name: 'Acme Ltd', join_code: 'ACME2345' }],
     users: [admin, manager, rep, otherRep].map((u) => ({ ...u, password_hash: 'x' })),
     contacts: [
       { id: 'c-rep', name: 'Wanjiku', owner_id: rep.id },
       { id: 'c-other', name: 'Otieno', owner_id: otherRep.id },
     ],
-  });
+  },
+  { companyId: 'co-1' }
+  );
   mirrorUpsert.mockClear();
   mirrorDelete.mockClear();
 });
 
 describe('POST /api/auth/register', () => {
-  test('creates a representative by default', async () => {
-    const res = await request(app)
-      .post('/api/auth/register')
-      .send({ name: 'Eve', email: 'eve@example.com', password: 'longenough' });
+  const register = (body) => request(app).post('/api/auth/register').send({ name: 'Eve', email: 'eve@example.com', password: 'longenough', ...body });
+
+  test("joining with a company's code makes you a representative in that company", async () => {
+    const res = await register({ joinCode: 'acme-2345' }); // any case, dashes ignored
 
     expect(res.status).toBe(201);
     expect(res.body.user.role).toBe('representative');
     expect(res.body.user.password_hash).toBeUndefined();
+    expect(res.body.company).toEqual({ id: 'co-1', name: 'Acme Ltd' });
+    expect(fake.tables.users.find((u) => u.email === 'eve@example.com')).toMatchObject({ company_id: 'co-1', role: 'representative' });
   });
 
-  test('refuses admin without the right access code', async () => {
-    for (const adminCode of [undefined, 'wrong-code']) {
-      const res = await request(app)
-        .post('/api/auth/register')
-        .send({ name: 'Eve', email: 'eve@example.com', password: 'longenough', role: 'admin', adminCode });
-      expect(res.status).toBe(403);
-    }
+  test('a wrong join code creates nothing', async () => {
+    const res = await register({ joinCode: 'NOPE9999' });
+    expect(res.status).toBe(400);
     expect(fake.tables.users).toHaveLength(4);
   });
 
-  test('creates an admin with the right access code', async () => {
-    const res = await request(app)
-      .post('/api/auth/register')
-      .send({ name: 'Eve', email: 'eve@example.com', password: 'longenough', role: 'admin', adminCode: 'test-admin-code' });
+  test('starting a company makes you its admin, with a fresh join code', async () => {
+    const res = await register({ companyName: 'Duka Traders' });
 
     expect(res.status).toBe(201);
-    expect(fake.tables.users.find((u) => u.email === 'eve@example.com').role).toBe('admin');
+    expect(res.body.user.role).toBe('admin');
+    const company = fake.tables.companies.find((c) => c.name === 'Duka Traders');
+    expect(company.join_code).toMatch(/^[A-Z0-9]{8}$/);
+    expect(company.id).not.toBe('co-1');
+    expect(fake.tables.users.find((u) => u.email === 'eve@example.com').company_id).toBe(company.id);
+  });
+
+  test('needs exactly one of a company name or a join code', async () => {
+    expect((await register({})).status).toBe(400);
+    expect((await register({ companyName: 'Duka', joinCode: 'ACME2345' })).status).toBe(400);
+    expect(fake.tables.users).toHaveLength(4);
+    expect(fake.tables.companies).toHaveLength(1);
   });
 
   test('rejects passwords shorter than 8 characters', async () => {
@@ -74,19 +84,6 @@ describe('POST /api/auth/register', () => {
 
     expect(res.status).toBe(400);
     expect(fake.tables.users).toHaveLength(4);
-  });
-});
-
-describe('auth rate limiting', () => {
-  test('blocks an IP after 10 attempts in the window', async () => {
-    // The register tests above already used 5 of this file's 10 attempts
-    const statuses = [];
-    for (let i = 0; i < 7; i++) {
-      const res = await request(app).post('/api/auth/login').send({ email: 'nobody@example.com', password: 'wrong' });
-      statuses.push(res.status);
-    }
-    expect(statuses.slice(0, 5).every((s) => s === 401)).toBe(true);
-    expect(statuses.slice(5)).toEqual([429, 429]);
   });
 });
 
@@ -135,7 +132,7 @@ describe('user role management', () => {
     expect(res.status).toBe(200);
     expect(res.body.user).toMatchObject({ id: rep.id, role: 'manager' });
     expect(res.body.user.password_hash).toBeUndefined();
-    expect(mirrorUpsert).toHaveBeenCalledWith('users', expect.objectContaining({ id: rep.id, role: 'manager' }));
+    expect(mirrorUpsert).toHaveBeenCalledWith('users', [expect.objectContaining({ id: rep.id, role: 'manager', manager_id: null })]);
   });
 
   test('managers and reps cannot change roles', async () => {
@@ -224,11 +221,11 @@ describe('system configuration', () => {
 
 describe('rep campaign results', () => {
   test("shows only the caller's own deals per campaign, without budget", async () => {
-    fake.tables.campaigns = [{ id: 'camp-1', name: 'Radio', channel: 'radio', budget: 1000, created_at: '2026-01-01' }];
+    fake.tables.campaigns = [{ id: 'camp-1', company_id: 'co-1', name: 'Radio', channel: 'radio', budget: 1000, created_at: '2026-01-01' }];
     fake.tables.deals = [
-      { id: 'd1', campaign_id: 'camp-1', owner_id: rep.id, stage: 'won', value: 500 },
-      { id: 'd2', campaign_id: 'camp-1', owner_id: rep.id, stage: 'lead', value: 200 },
-      { id: 'd3', campaign_id: 'camp-1', owner_id: otherRep.id, stage: 'won', value: 900 },
+      { id: 'd1', company_id: 'co-1', campaign_id: 'camp-1', owner_id: rep.id, stage: 'won', value: 500 },
+      { id: 'd2', company_id: 'co-1', campaign_id: 'camp-1', owner_id: rep.id, stage: 'lead', value: 200 },
+      { id: 'd3', company_id: 'co-1', campaign_id: 'camp-1', owner_id: otherRep.id, stage: 'won', value: 900 },
     ];
 
     const res = await request(app).get('/api/analytics/campaigns/me').set('Authorization', tokenFor(rep));

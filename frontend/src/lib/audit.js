@@ -24,14 +24,20 @@ export function describeAudit(entry) {
       return `Failed login attempt${d.email ? ` for ${d.email}` : ''}`;
     case 'auth.login_blocked':
       return 'Tried to log in to a disabled account';
+    case 'auth.login_locked':
+      return `Login refused: too many failed attempts${d.email ? ` for ${d.email}` : ''} (locked for 15 minutes)`;
     case 'auth.register':
-      return `Registered as ${ROLE_NAMES[d.role] || 'Sales Representative'}`;
+      return d.createdCompany
+        ? `Started the company “${d.createdCompany}” as its Admin`
+        : `Joined with the company code as ${ROLE_NAMES[d.role] || 'Sales Representative'}`;
     case 'auth.password_reset_requested':
       return d.matched === false ? `Password reset requested for unknown email ${d.email}` : 'Requested a password reset';
     case 'auth.password_reset':
       return d.viaAdminLink ? 'Changed their password using a link from an admin' : 'Reset their password';
     case 'user.role_change':
       return `Changed ${d.name || 'a user'} from ${ROLE_NAMES[d.from] || d.from || '?'} to ${ROLE_NAMES[d.to] || d.to}`;
+    case 'user.manager_change':
+      return d.manager ? `Put ${d.name || 'a representative'} in ${d.manager}’s team` : `Removed ${d.name || 'a representative'} from their manager’s team`;
     case 'user.disable':
       return `Disabled ${d.name || 'an account'}`;
     case 'user.enable':
@@ -58,6 +64,8 @@ export function describeAudit(entry) {
       return `Deleted campaign “${d.name}”${d.unlinkedDeals ? ` (${d.unlinkedDeals} deal${d.unlinkedDeals === 1 ? '' : 's'} unlinked)` : ''}`;
     case 'settings.benchmarks_update':
       return 'Updated conversion targets';
+    case 'settings.join_code_reset':
+      return 'Replaced the company join code';
     default:
       return entry.action;
   }
@@ -67,8 +75,11 @@ export function describeAudit(entry) {
 const SENSITIVE = new Set([
   'auth.login_failed',
   'auth.login_blocked',
+  'auth.login_locked',
   'auth.password_reset',
   'user.role_change',
+  'user.manager_change',
+  'settings.join_code_reset',
   'user.disable',
   'user.enable',
   'user.reset_link',
