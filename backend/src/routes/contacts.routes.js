@@ -2,19 +2,17 @@ import express from 'express';
 import { supabase } from '../config/supabaseClient.js';
 import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth } from '../middleware/auth.js';
-import { canEditDeal } from '../services/dealUpdates.js';
+import { canAccessOwned, scopeOwned } from '../services/access.js';
 import { fetchAll } from '../services/fetchAll.js';
 import { recordAudit } from '../services/audit.js';
 
 const router = express.Router();
 router.use(requireAuth);
 
-// GET /api/contacts — manager/admin see all contacts, rep sees only their own
+// GET /api/contacts — rep sees their own, manager their team's, admin the whole company's
 router.get('/', async (req, res) => {
-  const buildQuery = () => {
-    const query = supabase.from('contacts').select('*').order('created_at', { ascending: false }).order('id');
-    return req.user.role === 'representative' ? query.eq('owner_id', req.user.id) : query;
-  };
+  const buildQuery = () =>
+    scopeOwned(supabase.from('contacts').select('*'), req.user).order('created_at', { ascending: false }).order('id');
 
   const { data, error } = await fetchAll(buildQuery);
   if (error) return res.status(400).json({ error: error.message });
@@ -31,7 +29,7 @@ router.post('/', async (req, res) => {
 
   const { data, error } = await supabase
     .from('contacts')
-    .insert([{ name, company: company || null, email: email || null, phone: phone || null, owner_id: req.user.id }])
+    .insert([{ company_id: req.user.company_id, name, company: company || null, email: email || null, phone: phone || null, owner_id: req.user.id }])
     .select()
     .single();
 
@@ -44,11 +42,11 @@ router.post('/', async (req, res) => {
 const EDITABLE_FIELDS = ['name', 'company', 'email', 'phone'];
 
 // Returns the contact if the user may change it, otherwise null (callers answer 404 either way,
-// so reps can't probe for other reps' contact IDs). Same ownership rule as deals.
+// so nobody can probe for other people's contact IDs). Same rule as deals.
 async function findEditableContact(user, id) {
-  const { data, error } = await supabase.from('contacts').select('id, owner_id').eq('id', id).maybeSingle();
+  const { data, error } = await supabase.from('contacts').select('id, owner_id, company_id').eq('id', id).maybeSingle();
   if (error) throw error;
-  return data && canEditDeal(user, data) ? data : null;
+  return canAccessOwned(user, data) ? data : null;
 }
 
 // PATCH /api/contacts/:id — update a contact. Reps may only edit contacts they own.

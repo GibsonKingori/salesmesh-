@@ -7,6 +7,8 @@ import {
   pipelineVelocity,
   priorityScore,
   rankDealsByPriority,
+  teamPerformance,
+  dealsNeedingAttention,
 } from './analytics.js';
 
 const deal = (overrides) => ({
@@ -175,5 +177,47 @@ describe('priorityScore / rankDealsByPriority', () => {
     const ranked = rankDealsByPriority(deals, now);
     expect(ranked[0].id).toBe('high');
     expect(ranked[0].priority_score).toBeGreaterThan(ranked[1].priority_score);
+  });
+});
+
+describe('teamPerformance', () => {
+  const users = [
+    { id: 'r1', name: 'Ann', role: 'representative' },
+    { id: 'r2', name: 'Ben', role: 'representative' },
+    { id: 'm1', name: 'Mia', role: 'manager' },
+  ];
+
+  it('lists every rep, best won value first, and skips managers without deals', () => {
+    const deals = [
+      deal({ id: 'a', owner_id: 'r1', stage: 'won', value: 100 }),
+      deal({ id: 'b', owner_id: 'r2', stage: 'won', value: 500 }),
+      deal({ id: 'c', owner_id: 'r2', stage: 'lost', value: 50 }),
+      deal({ id: 'd', owner_id: 'r2', stage: 'proposal', value: 300 }),
+    ];
+    const rows = teamPerformance(deals, users);
+    expect(rows.map((r) => r.id)).toEqual(['r2', 'r1']);
+    expect(rows[0]).toMatchObject({ openCount: 1, openValue: 300, wonCount: 1, wonValue: 500, winRate: 0.5 });
+  });
+
+  it('gives a rep with no closed deals a null win rate', () => {
+    expect(teamPerformance([], users)[0].winRate).toBeNull();
+  });
+});
+
+describe('dealsNeedingAttention', () => {
+  const now = new Date('2026-06-10T09:00:00Z');
+
+  it('splits open dated deals into overdue and closing soon, ignoring closed and far-off deals', () => {
+    const deals = [
+      deal({ id: 'late', stage: 'proposal', expected_close_date: '2026-06-01' }),
+      deal({ id: 'today', stage: 'lead', expected_close_date: '2026-06-10' }),
+      deal({ id: 'soon', stage: 'negotiation', expected_close_date: '2026-06-20' }),
+      deal({ id: 'far', stage: 'lead', expected_close_date: '2026-09-01' }),
+      deal({ id: 'won', stage: 'won', expected_close_date: '2026-06-01' }),
+      deal({ id: 'undated', stage: 'lead' }),
+    ];
+    const { overdue, closingSoon } = dealsNeedingAttention(deals, now);
+    expect(overdue.map((d) => d.id)).toEqual(['late']);
+    expect(closingSoon.map((d) => d.id)).toEqual(['today', 'soon']);
   });
 });

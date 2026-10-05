@@ -16,7 +16,7 @@ Web-based sales analytics dashboard for Kenyan SMEs. PERN stack (PostgreSQL/Supa
 
 ## Ahead of Iteration 1 (pulled forward from later iterations)
 - [x] Deal CRUD (create + list) with a real "Add deal" UI
-- [x] CSV bulk import for deals, with per-row validation and error reporting
+- [x] Bulk import for deals from CSV, Excel/ODS, text, JSON, or a screenshot/PDF read by AI, with per-row validation and error reporting
 - [x] Contacts CRUD (API)
 - [x] Activity log CRUD (API)
 - [x] Row-Level Security enabled on all five tables (`users`, `contacts`, `campaigns` were flagged by Supabase's advisor and have since been locked to `service_role` only)
@@ -60,7 +60,7 @@ curl -X POST http://localhost:4000/api/auth/register \
 ```
 Then log in at http://localhost:5173/login.
 
-On the **Register** tab, anyone can sign up as a **Sales Rep**. Choosing **Manager** or **Admin** asks for an access code, and the API only accepts it if it matches `ADMIN_SIGNUP_CODE` in `backend/.env`. Share that code only with people who should have elevated access. If you leave it empty, only representative sign-ups work. Admins can still change roles under **Roles & permissions**.
+On the **Register** tab, choose **Start a company** to create a new company: you become its **Admin**, and the admin overview shows a join code to share with your team. Everyone else chooses **Join a company** and enters that code; they join as **Sales Reps**. The admin then changes roles and assigns each rep to a manager under **Accounts**. Companies never see each other's data, and a manager only sees the reps assigned to them.
 
 ### Dashboards by role (Chapter 4 use case diagram)
 - **Sales Representative** (`/rep`): own dashboard, deals, contacts, activities and campaign results.
@@ -68,15 +68,18 @@ On the **Register** tab, anyone can sign up as a **Sales Rep**. Choosing **Manag
 - **Administrator** (`/admin`): system overview with account search, **Accounts** (search, change roles, enable/disable, and open an account to add or delete its deals and campaigns), **System configuration** (conversion targets plus server settings) and the **Audit log** (filter by day, person and area; export to CSV).
 
 ### Importing an SME's records
-Use **Deals → Import CSV**. The app checks the file first and shows what it will do (deals, total value, stages, new contacts, skipped rows and why). Nothing is saved until you confirm. The template is `sample-data/deals-import-template.csv`.
+Use **Deals → Import deals**. Upload a spreadsheet (Excel `.xlsx`/`.xls`, OpenDocument `.ods`, CSV, or tab/semicolon-separated text), a JSON export, or a **screenshot, photo or PDF** of the records (drag it in, or paste a screenshot with Ctrl+V). Pictures and PDFs are read by AI: free on your own computer with Ollama (`AI_PROVIDER=ollama`, see `backend/.env.example`), or Claude with an API key (`AI_PROVIDER=claude`); the rows it read are shown so you can check them against the picture, and exactly those rows are imported. The app checks the file first and shows what it will do (deals, total value, stages, new contacts, skipped rows and why). Nothing is saved until you confirm. The template is `sample-data/deals-import-template.csv`.
 
-For accurate results:
-1. **Set up first:** create every salesperson's account, and create the campaigns (name, budget, channel, dates) on the Campaigns page. The import links deals to campaigns by name, and owners by email or full name.
-2. **One row per deal:** `title`, `value` and `stage` are required. Stage can be lead, qualified, proposal, negotiation, won or lost; everyday words like "Quote sent" or "Closed won" are understood.
-3. **Real dates:** include `created_date` (when the enquiry came in) and, for won/lost deals, `closed_date`. Dates can be DD/MM/YYYY or YYYY-MM-DD. Without them the deal counts as created or closed on the import day, which skews the forecast and sales cycle.
-4. **Customers:** `contact_name` and `company` create a contact once and reuse it across rows.
-5. **Save from Excel as "CSV UTF-8"**, run the check, fix any skipped rows, and import.
-6. **Check once:** compare the Overview's won value, deal count and win rate with a spreadsheet total of the same file.
+The business doesn't need to change its records to fit SalesMesh:
+- **Any column names, in any order.** Known headings ("Amount", "Customer", "Date sold", ...) are matched directly; anything else (other wording, Swahili, no heading row at all) is matched by AI from the headings and sample rows, along with the business's own status words ("Imelipwa", "Deposit", ...). Without AI, amount, date and phone columns are recognised from their contents. The preview lists every column and what it was read as, and any of them can be changed before importing.
+- **Nothing is strictly required.** A deal with no name is named after its customer, a blank amount is Ksh 0, and rows with no status are imported as the stage you choose in the preview (completed sales by default). One date on a sale is used as both its start and close date. Amounts like `Ksh 45,000/=`, `22k` and dates like `05 Mar 2026` or Excel date numbers are understood.
+- **Rows are only skipped when they can't be used** (an amount that isn't a number, a date in the future, or no deal details at all). A salesperson or campaign that isn't in SalesMesh yet doesn't stop the deal: it's imported without that link, and the preview says so.
+
+For the most accurate results:
+1. **Set up first:** create every salesperson's account and the campaigns (Campaigns page), so deals are linked to them by name.
+2. **Include dates** where you have them: when the enquiry came in and when the deal was won or lost. Without them the import day is used, which skews the forecast and sales cycle.
+3. **Upload the file as it is,** check the preview (especially the columns list and the status choice), and import.
+4. **Check once:** compare the Overview's won value, deal count and win rate with a spreadsheet total of the same file.
 
 A deal's close date (`closed_at`) is recorded when it moves to won or lost and isn't changed by later edits.
 

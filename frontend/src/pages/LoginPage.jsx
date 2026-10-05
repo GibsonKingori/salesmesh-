@@ -11,11 +11,11 @@ const FEATURES = [
   { title: 'Revenue forecast', text: 'A forward view built from the deals you actually close.' },
 ];
 
-// Manager and Admin need the access code set as ADMIN_SIGNUP_CODE on the server
-const ROLE_OPTIONS = [
-  { value: 'representative', label: 'Sales Rep' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'admin', label: 'Admin' },
+// Joining needs the company's join code (from its admin) and makes you a Sales Rep;
+// starting a company makes you its admin
+const SIGNUP_OPTIONS = [
+  { value: 'join', label: 'Join a company' },
+  { value: 'create', label: 'Start a company' },
 ];
 
 export default function LoginPage() {
@@ -23,8 +23,9 @@ export default function LoginPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('representative');
-  const [adminCode, setAdminCode] = useState('');
+  const [signup, setSignup] = useState('join'); // 'join' | 'create'
+  const [joinCode, setJoinCode] = useState('');
+  const [companyName, setCompanyName] = useState('');
   // api/client.js sends users here with ?expired=1 or ?disabled=1; the reset page with ?reset=1
   const [error, setError] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -41,7 +42,6 @@ export default function LoginPage() {
   const navigate = useNavigate();
 
   const isRegister = mode === 'register';
-  const needsCode = isRegister && role !== 'representative';
 
   const switchMode = (next) => {
     setMode(next);
@@ -55,7 +55,8 @@ export default function LoginPage() {
     setNotice('');
     setLoading(true);
     try {
-      const user = isRegister ? await register(name, email, password, role, needsCode ? adminCode : undefined) : await login(email, password);
+      const company = signup === 'join' ? { joinCode } : { companyName };
+      const user = isRegister ? await register(name, email, password, company) : await login(email, password);
       setWelcomeName(user.name);
       setTimeout(() => {
         navigate(HOME_BY_ROLE[user.role] || '/');
@@ -221,40 +222,54 @@ export default function LoginPage() {
 
               {isRegister && (
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-fg-soft">Role</label>
-                  <div className="flex rounded-lg border border-fg/10 bg-fg/5 p-1 text-sm font-medium">
-                    {ROLE_OPTIONS.map((opt) => (
+                  <label className="mb-1 block text-sm font-medium text-fg-soft">Company</label>
+                  <div className="mb-2 flex rounded-lg border border-fg/10 bg-fg/5 p-1 text-sm font-medium">
+                    {SIGNUP_OPTIONS.map((opt) => (
                       <button
                         key={opt.value}
                         type="button"
-                        onClick={() => setRole(opt.value)}
-                        aria-pressed={role === opt.value}
+                        onClick={() => setSignup(opt.value)}
+                        aria-pressed={signup === opt.value}
                         className={`flex-1 rounded-md py-1.5 transition-colors ${
-                          role === opt.value ? 'bg-fg/10 text-fg' : 'text-muted hover:text-fg'
+                          signup === opt.value ? 'bg-fg/10 text-fg' : 'text-muted hover:text-fg'
                         }`}
                       >
                         {opt.label}
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {needsCode && (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-fg-soft">Admin access code</label>
-                  <input
-                    type="password"
-                    placeholder="Ask your administrator"
-                    value={adminCode}
-                    onChange={(e) => setAdminCode(e.target.value)}
-                    className={inputClass}
-                    autoComplete="off"
-                    required
-                  />
-                  <p className="mt-1 text-xs text-subtle">
-                    Manager and Admin accounts need the code from your administrator.
-                  </p>
+                  {signup === 'join' ? (
+                    <>
+                      <input
+                        type="text"
+                        placeholder="Join code, e.g. ACME2345"
+                        aria-label="Company join code"
+                        value={joinCode}
+                        onChange={(e) => setJoinCode(e.target.value)}
+                        className={`${inputClass} font-mono uppercase tracking-wider`}
+                        autoComplete="off"
+                        required
+                      />
+                      <p className="mt-1 text-xs text-subtle">
+                        Ask your company’s admin for the code. You’ll join as a Sales Rep; the admin can change your role.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        placeholder="Company name"
+                        aria-label="Company name"
+                        value={companyName}
+                        onChange={(e) => setCompanyName(e.target.value)}
+                        className={inputClass}
+                        required
+                      />
+                      <p className="mt-1 text-xs text-subtle">
+                        You’ll be the company’s admin, with a join code to share with your team.
+                      </p>
+                    </>
+                  )}
                 </div>
               )}
 

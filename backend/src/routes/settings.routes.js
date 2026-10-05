@@ -15,7 +15,7 @@ router.use(requireRole('manager', 'admin'));
 // GET /api/settings/benchmarks — every transition, with its target rate or null if unset
 router.get('/benchmarks', async (req, res) => {
   try {
-    const rates = await loadBenchmarks();
+    const rates = await loadBenchmarks(req.user.company_id);
     return res.json({
       benchmarks: FUNNEL_TRANSITIONS.map((transition) => ({ transition, rate: rates[transition] ?? null })),
     });
@@ -46,22 +46,30 @@ router.put('/benchmarks', requireRole('admin'), async (req, res) => {
     if (Number.isNaN(n) || n < 0 || n > 1) {
       return res.status(400).json({ error: `Rate for ${transition} must be between 0 and 1` });
     }
-    toUpsert.push({ transition, rate: n, updated_by: req.user.id, updated_at: new Date().toISOString() });
+    toUpsert.push({ company_id: req.user.company_id, transition, rate: n, updated_by: req.user.id, updated_at: new Date().toISOString() });
   }
 
   if (toUpsert.length > 0) {
-    const { data, error } = await supabase.from('funnel_benchmarks').upsert(toUpsert).select();
+    const { data, error } = await supabase
+      .from('funnel_benchmarks')
+      .upsert(toUpsert, { onConflict: 'company_id,transition' })
+      .select();
     if (error) return res.status(400).json({ error: error.message });
     await mirrorUpsert('funnel_benchmarks', data);
   }
   if (toClear.length > 0) {
-    const { data, error } = await supabase.from('funnel_benchmarks').delete().in('transition', toClear).select('transition');
+    const { data, error } = await supabase
+      .from('funnel_benchmarks')
+      .delete()
+      .eq('company_id', req.user.company_id)
+      .in('transition', toClear)
+      .select('id');
     if (error) return res.status(400).json({ error: error.message });
     await mirrorDelete('funnel_benchmarks', data);
   }
 
   await recordAudit(req.user, 'settings.benchmarks_update', { entity: 'settings', details: { rates } });
-  const saved = await loadBenchmarks();
+  const saved = await loadBenchmarks(req.user.company_id);
   return res.json({
     benchmarks: FUNNEL_TRANSITIONS.map((transition) => ({ transition, rate: saved[transition] ?? null })),
   });

@@ -7,6 +7,7 @@ import Panel from '../../components/Panel.jsx';
 import AuditList from '../../components/AuditList.jsx';
 import { ICONS } from '../../components/icons.jsx';
 import { formatDate } from '../../lib/format.js';
+import ConfirmButton from '../../components/ConfirmButton.jsx';
 import { SearchIcon, StatusPill } from './AccountsPage.jsx';
 
 const ROLE_ROWS = [
@@ -18,7 +19,58 @@ const ROLE_NAMES = { admin: 'Admin', manager: 'Manager', representative: 'Sales 
 
 const linkClass = 'text-xs font-medium text-brand-700 dark:text-brand-300 hover:text-brand-800 dark:hover:text-brand-200';
 
-// Administrator home: the health of the system rather than sales numbers
+// The code people enter on the Register page to join this company
+function JoinCodeCard({ company, onChange }) {
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(company.joinCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard blocked: the code is on screen to copy by hand
+    }
+  };
+
+  const regenerate = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      onChange((await api.post('/admin/company/join-code')).data.company);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not create a new code');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-fg/10 bg-surface px-5 py-4 shadow-sm shadow-ink-900/5">
+      <div className="min-w-0">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted">{company.name} · join code</p>
+        <p className="mt-1 font-mono text-2xl font-bold tracking-[0.2em] text-fg">{company.joinCode}</p>
+        <p className="mt-1 text-xs text-subtle">
+          Share it with your team: they enter it under Register → Join a company and start as Sales Reps.
+        </p>
+        {error && <p className="mt-1 text-xs text-red-700 dark:text-red-300">{error}</p>}
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={copy}
+          className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-1.5 text-sm font-medium text-fg-soft transition-colors hover:bg-fg/10 hover:text-fg"
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+        <ConfirmButton label="New code" confirmLabel="Replace code?" disabled={busy} onConfirm={regenerate} />
+      </div>
+    </div>
+  );
+}
+
+// Administrator home: the health of the company's account rather than sales numbers
 export default function AdminOverviewPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -44,7 +96,7 @@ export default function AdminOverviewPage() {
     );
   }
 
-  const { users, records, failedLogins24h, recentActivity } = data;
+  const { users, records, failedLogins24h, recentActivity, company } = data;
 
   const findAccount = (e) => {
     e.preventDefault();
@@ -67,6 +119,21 @@ export default function AdminOverviewPage() {
           Search
         </button>
       </form>
+
+      <JoinCodeCard company={company} onChange={(next) => setData((prev) => ({ ...prev, company: next }))} />
+
+      {users.unassignedReps > 0 && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-accent-400/30 bg-accent-400/10 px-4 py-3 text-sm text-fg">
+          <span>
+            {users.unassignedReps} sales rep{users.unassignedReps === 1 ? ' has' : 's have'} no manager yet, so no manager can
+            see their sales.
+          </span>
+          <Link to="/admin/accounts?status=unassigned" className={linkClass}>
+            Assign managers →
+          </Link>
+        </div>
+      )}
+
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Users"
