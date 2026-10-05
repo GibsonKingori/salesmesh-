@@ -5,8 +5,10 @@ const cell = (v) => {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
+export const toCsv = (header, rows) => [header, ...rows].map((r) => r.map(cell).join(',')).join('\r\n');
+
 export function downloadCsv(filename, header, rows) {
-  const text = [header, ...rows].map((r) => r.map(cell).join(',')).join('\r\n');
+  const text = toCsv(header, rows);
   // BOM so Excel opens KES amounts and names with accents correctly
   const blob = new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);

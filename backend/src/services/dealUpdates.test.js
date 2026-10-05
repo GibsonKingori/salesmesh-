@@ -1,20 +1,36 @@
 import { buildDealUpdate, canEditDeal } from './dealUpdates.js';
 
-const rep = { id: 'rep-1', role: 'representative' };
-const manager = { id: 'mgr-1', role: 'manager' };
+const rep = { id: 'rep-1', role: 'representative', company_id: 'co-1' };
+const manager = { id: 'mgr-1', role: 'manager', company_id: 'co-1', teamIds: ['rep-2'] };
+const admin = { id: 'admin-1', role: 'admin', company_id: 'co-1' };
 const now = new Date('2026-09-23T10:00:00Z');
 
 describe('canEditDeal', () => {
+  const deal = (owner_id, company_id = 'co-1') => ({ owner_id, company_id });
+
   test('rep can edit own deal', () => {
-    expect(canEditDeal(rep, { owner_id: 'rep-1' })).toBe(true);
+    expect(canEditDeal(rep, deal('rep-1'))).toBe(true);
   });
 
   test("rep cannot edit another rep's deal", () => {
-    expect(canEditDeal(rep, { owner_id: 'rep-2' })).toBe(false);
+    expect(canEditDeal(rep, deal('rep-2'))).toBe(false);
   });
 
-  test('manager can edit any deal', () => {
-    expect(canEditDeal(manager, { owner_id: 'rep-2' })).toBe(true);
+  test("manager can edit their own and their reps' deals, but not another team's", () => {
+    expect(canEditDeal(manager, deal('mgr-1'))).toBe(true);
+    expect(canEditDeal(manager, deal('rep-2'))).toBe(true);
+    expect(canEditDeal(manager, deal('rep-1'))).toBe(false);
+  });
+
+  test('admin can edit any deal in their company', () => {
+    expect(canEditDeal(admin, deal('rep-1'))).toBe(true);
+    expect(canEditDeal(admin, deal(null))).toBe(true);
+  });
+
+  test('nobody can edit a deal in another company, even with the same owner id', () => {
+    expect(canEditDeal(rep, deal('rep-1', 'co-2'))).toBe(false);
+    expect(canEditDeal(manager, deal('rep-2', 'co-2'))).toBe(false);
+    expect(canEditDeal(admin, deal('rep-1', 'co-2'))).toBe(false);
   });
 });
 

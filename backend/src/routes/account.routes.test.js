@@ -4,15 +4,13 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { createFakeSupabase } from '../test/fakeSupabase.js';
 
-// Account administration and password resets. Kept apart from security.routes.test.js
-// because the auth rate limiter (10 attempts per file) is shared within a test file:
-// this file makes 8 rate-limited auth calls.
+// Account administration and password resets
 process.env.JWT_SECRET = 'test-secret';
 
 const PASSWORD = 'original-pass';
 const admin = { id: 'admin-1', name: 'Ada', email: 'ada@example.com', role: 'admin' };
 const manager = { id: 'mgr-1', name: 'Mo', email: 'mo@example.com', role: 'manager' };
-const rep = { id: 'rep-1', name: 'Rae', email: 'rae@example.com', role: 'representative' };
+const rep = { id: 'rep-1', name: 'Rae', email: 'rae@example.com', role: 'representative', manager_id: 'mgr-1' };
 const passwordHash = bcrypt.hashSync(PASSWORD, 4);
 
 let fake;
@@ -31,13 +29,17 @@ const asAdmin = (req) => req.set('Authorization', tokenFor(admin));
 const auditActions = () => fake.tables.audit_logs?.map((e) => e.action) ?? [];
 
 beforeEach(() => {
-  fake = createFakeSupabase({
+  fake = createFakeSupabase(
+  {
+    companies: [{ id: 'co-1', name: 'Acme Ltd', join_code: 'ACME2345' }],
     users: [admin, manager, rep].map((u) => ({ ...u, password_hash: passwordHash, is_active: true })),
     campaigns: [{ id: 'camp-1', name: 'Radio push', budget: 5000, created_by: manager.id, created_at: '2026-09-01' }],
     deals: [
       { id: 'deal-1', title: 'Shop fit-out', value: 1000, stage: 'lead', owner_id: rep.id, campaign_id: 'camp-1', created_at: '2026-09-02' },
     ],
-  });
+  },
+  { companyId: 'co-1' }
+  );
   mirrorUpsert.mockClear();
   mirrorDelete.mockClear();
 });
@@ -170,9 +172,9 @@ describe("admin access to someone's account", () => {
 describe('audit log filters', () => {
   test('filters by day and by name', async () => {
     fake.tables.audit_logs = [
-      { id: 'a1', action: 'auth.login', user_name: 'Rae', created_at: '2026-10-01T09:00:00.000Z' },
-      { id: 'a2', action: 'auth.login', user_name: 'Mo', created_at: '2026-10-02T09:00:00.000Z' },
-      { id: 'a3', action: 'deal.create', user_name: 'Rae', created_at: '2026-10-02T15:00:00.000Z' },
+      { id: 'a1', company_id: 'co-1', action: 'auth.login', user_name: 'Rae', created_at: '2026-10-01T09:00:00.000Z' },
+      { id: 'a2', company_id: 'co-1', action: 'auth.login', user_name: 'Mo', created_at: '2026-10-02T09:00:00.000Z' },
+      { id: 'a3', company_id: 'co-1', action: 'deal.create', user_name: 'Rae', created_at: '2026-10-02T15:00:00.000Z' },
     ];
     const day = await asAdmin(request(app).get('/api/admin/audit')).query({
       from: '2026-10-02T00:00:00.000Z',

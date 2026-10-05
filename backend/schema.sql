@@ -1,6 +1,6 @@
 -- SalesMesh database schema
 -- Run this in the Supabase SQL Editor (Project > SQL Editor > New Query)
--- Matches the five ERD entities: User, Deal, Contact, Campaign, Activity
+-- ERD entities: User, Deal, Contact, Campaign, Activity, plus Company (one per business using SalesMesh)
 
 create extension if not exists "uuid-ossp";
 
@@ -144,3 +144,57 @@ revoke all on password_resets from anon, authenticated;
 -- and sales velocity use the real close date.
 alter table deals add column if not exists closed_at timestamptz;
 update deals set closed_at = updated_at where stage in ('won', 'lost') and closed_at is null;
+
+-- COMPANIES & TEAMS -----------------------------------------------------
+-- Each company's data is invisible to every other company. People join a company with
+-- its join code; whoever creates a company becomes its admin. Each representative can be
+-- assigned to one manager, and a manager only sees their own representatives' sales.
+create table if not exists companies (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null,
+  join_code text unique not null,
+  created_at timestamptz not null default now()
+);
+
+alter table users add column if not exists company_id uuid references companies(id) on delete cascade;
+alter table users add column if not exists manager_id uuid references users(id) on delete set null;
+alter table contacts add column if not exists company_id uuid references companies(id) on delete cascade;
+alter table campaigns add column if not exists company_id uuid references companies(id) on delete cascade;
+alter table deals add column if not exists company_id uuid references companies(id) on delete cascade;
+alter table audit_logs add column if not exists company_id uuid references companies(id) on delete cascade;
+alter table funnel_benchmarks add column if not exists company_id uuid references companies(id) on delete cascade;
+
+-- Conversion targets are per company: an id key, unique per (company, transition)
+alter table funnel_benchmarks add column if not exists id uuid not null default uuid_generate_v4();
+alter table funnel_benchmarks drop constraint if exists funnel_benchmarks_pkey;
+alter table funnel_benchmarks add primary key (id);
+create unique index if not exists idx_funnel_benchmarks_company_transition on funnel_benchmarks(company_id, transition);
+
+create index if not exists idx_users_company on users(company_id);
+create index if not exists idx_users_manager on users(manager_id);
+create index if not exists idx_contacts_company on contacts(company_id);
+create index if not exists idx_campaigns_company on campaigns(company_id);
+create index if not exists idx_deals_company on deals(company_id);
+create index if not exists idx_audit_logs_company on audit_logs(company_id, created_at desc);
+
+-- Data from before companies existed all belongs to one company
+insert into companies (name, join_code)
+select 'SalesMesh Demo', upper(substr(md5(random()::text), 1, 8))
+where not exists (select 1 from companies)
+  and exists (select 1 from users where company_id is null);
+update users set company_id = (select id from companies order by created_at limit 1) where company_id is null;
+update contacts set company_id = (select id from companies order by created_at limit 1) where company_id is null;
+update campaigns set company_id = (select id from companies order by created_at limit 1) where company_id is null;
+update deals set company_id = (select id from companies order by created_at limit 1) where company_id is null;
+update funnel_benchmarks set company_id = (select id from companies order by created_at limit 1) where company_id is null;
+update audit_logs set company_id = (select id from companies order by created_at limit 1) where company_id is null;
+
+alter table users alter column company_id set not null;
+alter table contacts alter column company_id set not null;
+alter table campaigns alter column company_id set not null;
+alter table deals alter column company_id set not null;
+alter table funnel_benchmarks alter column company_id set not null;
+-- audit_logs.company_id stays nullable: a failed login for an unknown email belongs to no company
+
+alter table companies enable row level security;
+revoke all on companies from anon, authenticated;

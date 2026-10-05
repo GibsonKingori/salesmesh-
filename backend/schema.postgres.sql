@@ -3,7 +3,7 @@
 -- Row-level security and the anon/authenticated grants are Supabase-only and left out;
 -- the API enforces access rules and is the only writer here.
 -- Apply with: npm run db:setup
--- Matches the five ERD entities: User, Deal, Contact, Campaign, Activity
+-- ERD entities: User, Deal, Contact, Campaign, Activity, plus Company (one per business using SalesMesh)
 
 create extension if not exists "uuid-ossp";
 
@@ -126,3 +126,35 @@ create index if not exists idx_password_resets_user on password_resets(user_id);
 -- and sales velocity use the real close date.
 alter table deals add column if not exists closed_at timestamptz;
 update deals set closed_at = updated_at where stage in ('won', 'lost') and closed_at is null;
+
+-- COMPANIES & TEAMS -----------------------------------------------------
+-- Each company's data is invisible to every other company. People join a company with
+-- its join code; whoever creates a company becomes its admin. Each representative can be
+-- assigned to one manager, and a manager only sees their own representatives' sales.
+create table if not exists companies (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null,
+  join_code text unique not null,
+  created_at timestamptz not null default now()
+);
+
+alter table users add column if not exists company_id uuid references companies(id) on delete cascade;
+alter table users add column if not exists manager_id uuid references users(id) on delete set null;
+alter table contacts add column if not exists company_id uuid references companies(id) on delete cascade;
+alter table campaigns add column if not exists company_id uuid references companies(id) on delete cascade;
+alter table deals add column if not exists company_id uuid references companies(id) on delete cascade;
+alter table audit_logs add column if not exists company_id uuid references companies(id) on delete cascade;
+alter table funnel_benchmarks add column if not exists company_id uuid references companies(id) on delete cascade;
+
+-- Conversion targets are per company: an id key, unique per (company, transition)
+alter table funnel_benchmarks add column if not exists id uuid not null default uuid_generate_v4();
+alter table funnel_benchmarks drop constraint if exists funnel_benchmarks_pkey;
+alter table funnel_benchmarks add primary key (id);
+create unique index if not exists idx_funnel_benchmarks_company_transition on funnel_benchmarks(company_id, transition);
+
+create index if not exists idx_users_company on users(company_id);
+create index if not exists idx_users_manager on users(manager_id);
+create index if not exists idx_contacts_company on contacts(company_id);
+create index if not exists idx_campaigns_company on campaigns(company_id);
+create index if not exists idx_deals_company on deals(company_id);
+create index if not exists idx_audit_logs_company on audit_logs(company_id, created_at desc);

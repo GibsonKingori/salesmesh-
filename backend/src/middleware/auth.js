@@ -11,13 +11,30 @@ export function forgetAccount(userId) {
   accountCache.delete(userId);
 }
 
+// A manager's account also carries the ids of the representatives assigned to them,
+// which services/access.js uses to decide what the manager can see
 async function loadAccount(userId) {
   const hit = accountCache.get(userId);
   if (hit && Date.now() - hit.at < ACCOUNT_CACHE_MS) return hit.account;
-  const { data, error } = await supabase.from('users').select('id, name, role, is_active').eq('id', userId).maybeSingle();
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, name, role, is_active, company_id, manager_id')
+    .eq('id', userId)
+    .maybeSingle();
   if (error) throw error;
-  accountCache.set(userId, { account: data, at: Date.now() });
-  return data;
+
+  let account = data;
+  if (data?.role === 'manager') {
+    const { data: team, error: teamError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('company_id', data.company_id)
+      .eq('manager_id', data.id);
+    if (teamError) throw teamError;
+    account = { ...data, teamIds: team.map((u) => u.id) };
+  }
+  accountCache.set(userId, { account, at: Date.now() });
+  return account;
 }
 
 export async function requireAuth(req, res, next) {
@@ -46,8 +63,15 @@ export async function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Your account has been disabled. Contact your administrator.', code: 'account_disabled' });
   }
 
-  // { id, name, email, role } with the current role and name from the database
-  req.user = { ...payload, name: account.name, role: account.role };
+  // { id, name, email, role, company_id, manager_id, teamIds? }, all current from the database
+  req.user = {
+    ...payload,
+    name: account.name,
+    role: account.role,
+    company_id: account.company_id,
+    manager_id: account.manager_id ?? null,
+    teamIds: account.teamIds ?? [],
+  };
   next();
 }
 
