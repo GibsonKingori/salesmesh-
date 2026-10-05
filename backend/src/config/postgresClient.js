@@ -28,12 +28,13 @@ export const pool = connectionString
 
 // Primary key column for every mirrored table
 export const PRIMARY_KEYS = {
+  companies: 'id',
   users: 'id',
   contacts: 'id',
   campaigns: 'id',
   deals: 'id',
   activities: 'id',
-  funnel_benchmarks: 'transition',
+  funnel_benchmarks: 'id',
   audit_logs: 'id',
   password_resets: 'id',
 };

@@ -6,8 +6,8 @@ import { createFakeSupabase } from '../test/fakeSupabase.js';
 process.env.JWT_SECRET = 'test-secret';
 
 const manager = { id: 'mgr-1', name: 'Mo', email: 'mo@example.com', role: 'manager' };
-const rep = { id: 'rep-1', name: 'Rae', email: 'rae@example.com', role: 'representative' };
-const otherRep = { id: 'rep-2', name: 'Ron', email: 'ron@example.com', role: 'representative' };
+const rep = { id: 'rep-1', name: 'Rae', email: 'rae@example.com', role: 'representative', manager_id: 'mgr-1' };
+const otherRep = { id: 'rep-2', name: 'Ron', email: 'ron@example.com', role: 'representative', manager_id: 'mgr-1' };
 
 let fake;
 const mirrorUpsert = jest.fn();
@@ -23,13 +23,16 @@ const { default: app } = await import('../app.js');
 const tokenFor = (user) => `Bearer ${jwt.sign({ id: user.id, email: user.email, role: user.role }, 'test-secret')}`;
 
 beforeEach(() => {
-  fake = createFakeSupabase({
+  fake = createFakeSupabase(
+  {
     users: [manager, rep, otherRep].map((u) => ({ ...u, password_hash: 'x' })),
     deals: [
       { id: 'd-rep', title: 'Rae deal', value: 1000, stage: 'lead', owner_id: rep.id },
       { id: 'd-other', title: 'Ron deal', value: 2000, stage: 'proposal', owner_id: otherRep.id },
     ],
-  });
+  },
+  { companyId: 'co-1' }
+  );
   mirrorUpsert.mockClear();
   mirrorDelete.mockClear();
 });
@@ -74,7 +77,8 @@ describe('GET /api/deals search, filters and paging', () => {
   const day = (n) => `2026-09-${String(n).padStart(2, '0')}T00:00:00Z`;
 
   beforeEach(() => {
-    fake = createFakeSupabase({
+    fake = createFakeSupabase(
+    {
       users: [manager, rep, otherRep].map((u) => ({ ...u, password_hash: 'x' })),
       deals: [
         { id: 'o1', title: 'Acme renewal', value: 100, stage: 'lead', owner_id: rep.id, campaign_id: 'cmp-1', created_at: day(1), updated_at: day(1) },
@@ -83,7 +87,9 @@ describe('GET /api/deals search, filters and paging', () => {
         { id: 'w1', title: 'Initech won', value: 400, stage: 'won', owner_id: rep.id, created_at: day(4), updated_at: day(9) },
         { id: 'l1', title: 'Acme lost', value: 500, stage: 'lost', owner_id: rep.id, created_at: day(5), updated_at: day(7) },
       ],
-    });
+    },
+    { companyId: 'co-1' }
+    );
   });
 
   const get = (path, user = manager) => request(app).get(path).set('Authorization', tokenFor(user));

@@ -1,6 +1,5 @@
 import express from 'express';
 import multer from 'multer';
-import { parse } from 'csv-parse/sync';
 import { supabase } from '../config/supabaseClient.js';
 import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -9,27 +8,51 @@ import { buildDealUpdate, canEditDeal, closedAtForStageChange } from '../service
 import { parseDealQuery, applyDealFilters, matchesDealFilters } from '../services/dealFilters.js';
 import { recordAudit } from '../services/audit.js';
 import { fetchAll } from '../services/fetchAll.js';
-import { CLOSED_STAGES, contactKey, dateToTimestamp, mapHeaders, readDealRow } from '../services/dealImport.js';
+import { CLOSED_STAGES, contactKey, dateToTimestamp, parseStage, readDealRow, simplify } from '../services/dealImport.js';
+import { buildMapping, parseClientMapping } from '../services/columnMapper.js';
+import { VALID_STAGES } from '../services/dealUpdates.js';
+import { readImportFile, ReadError } from '../services/importReaders.js';
+import { canAccessOwned, sameCompany, scopeCompany, scopeOwned, visibleOwnerIds } from '../services/access.js';
 
 const router = express.Router();
 router.use(requireAuth);
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
+// Only the deals the user may see (services/access.js): own deals for a rep, the team's for a
+// manager, the whole company's for an admin
 function scopedDealsQuery(user, { orderBy = 'created_at' } = {}) {
   // id breaks ties (imported deals often share a date) so paging never repeats or skips a deal
-  let query = supabase.from('deals').select('*', { count: 'exact' }).order(orderBy, { ascending: false }).order('id');
-  if (user.role === 'representative') {
-    query = query.eq('owner_id', user.id);
-  }
-  return query;
+  return scopeOwned(supabase.from('deals').select('*', { count: 'exact' }), user).order(orderBy, { ascending: false }).order('id');
 }
 
-// Reps may only link contacts they own; managers/admins may link any contact
+// A deal may only link a contact the user can see
 async function contactIsAssignable(user, contactId) {
-  if (!contactId || ['manager', 'admin'].includes(user.role)) return true;
-  const { data } = await supabase.from('contacts').select('owner_id').eq('id', contactId).maybeSingle();
-  return data?.owner_id === user.id;
+  if (!contactId) return true;
+  const { data } = await supabase.from('contacts').select('owner_id, company_id').eq('id', contactId).maybeSingle();
+  return canAccessOwned(user, data);
+}
+
+// ...and a campaign from the user's own company
+async function campaignIsAssignable(user, campaignId) {
+  if (!campaignId) return true;
+  const { data } = await supabase.from('campaigns').select('company_id').eq('id', campaignId).maybeSingle();
+  return sameCompany(user, data);
+}
+
+// A manager can hand a deal to themselves or one of their reps; an admin to anyone in the company
+async function ownerIsAssignable(user, ownerId) {
+  if (!ownerId) return user.role === 'admin';
+  const owners = visibleOwnerIds(user);
+  if (owners) return owners.includes(ownerId);
+  const { data } = await supabase.from('users').select('company_id').eq('id', ownerId).maybeSingle();
+  return sameCompany(user, data);
+}
+
+async function checkLinks(user, { contact_id, campaign_id }) {
+  if (!(await contactIsAssignable(user, contact_id))) return 'Contact not found';
+  if (!(await campaignIsAssignable(user, campaign_id))) return 'Campaign not found';
+  return null;
 }
 
 // GET /api/deals — manager sees team deals, rep sees only their own.
@@ -75,14 +98,14 @@ router.post('/', async (req, res) => {
   if (!title || value == null || !stage) {
     return res.status(400).json({ error: 'title, value, and stage are required' });
   }
-  if (!(await contactIsAssignable(req.user, contact_id))) {
-    return res.status(400).json({ error: 'Contact not found' });
-  }
+  const linkError = await checkLinks(req.user, { contact_id, campaign_id });
+  if (linkError) return res.status(400).json({ error: linkError });
 
   const { data, error } = await supabase
     .from('deals')
     .insert([
       {
+        company_id: req.user.company_id,
         title,
         value,
         stage,
@@ -102,60 +125,89 @@ router.post('/', async (req, res) => {
   return res.status(201).json({ deal: data });
 });
 
-// POST /api/deals/import — bulk-create deals from the SME's own records (CSV, field "file").
-// Columns (common alternatives accepted, see services/dealImport.js):
-//   required: title, value, stage
-//   optional: created_date, closed_date, expected_close_date, campaign, contact_name, company,
-//             contact_email, contact_phone, owner (manager/admin only: email or full name)
+// POST /api/deals/import — bulk-create deals from the SME's own records (field "file"): CSV or other
+// text, Excel/ODS, JSON, or a screenshot/PDF that Claude reads (see services/importReaders.js).
+// Any column layout works: known headings are matched directly, the rest by AI
+// (services/columnMapper.js), and missing details get defaults the preview reports.
+// Optional form fields: mapping (JSON from a previous preview, possibly changed by the user) and
+// defaultStage (stage for rows without a status, default "won").
 // ?dryRun=1 checks everything and returns the preview without saving.
 const IMPORT_CHUNK = 500;
 
-router.post('/import', upload.single('file'), async (req, res) => {
+function statusSummary(table, fields, stageMap, defaultStage) {
+  const i = fields.indexOf('stage');
+  if (i === -1) return [];
+  const counts = new Map();
+  table.rows.forEach((r) => {
+    const value = String(r.cells[i] ?? '').trim();
+    if (value) counts.set(value, (counts.get(value) || 0) + 1);
+  });
+  return [...counts].map(([value, count]) => {
+    const known = stageMap[simplify(value)] ?? parseStage(value);
+    return { value, count, stage: known ?? defaultStage, matched: Boolean(known) };
+  });
+}
+
+// multer errors (e.g. file too big) as a JSON message instead of Express's HTML error page
+const uploadFile = (req, res, next) =>
+  upload.single('file')(req, res, (err) => {
+    if (!err) return next();
+    const error = err.code === 'LIMIT_FILE_SIZE' ? 'That file is too big (10 MB maximum)' : err.message;
+    return res.status(400).json({ error });
+  });
+
+router.post('/import', uploadFile, async (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ error: 'CSV file is required (form field name "file")' });
+    return res.status(400).json({ error: 'A file is required (form field name "file")' });
   }
   const dryRun = ['1', 'true'].includes(String(req.query.dryRun));
-
-  let records;
-  let fields;
-  try {
-    // Strip a UTF-8 BOM (Excel adds one) so the first header is recognised
-    const text = req.file.buffer.toString('utf-8').replace(/^﻿/, '');
-    records = parse(text, {
-      columns: (header) => {
-        fields = mapHeaders(header);
-        return header.map((h, i) => fields[i] ?? `__ignored_${i}`);
-      },
-      skip_empty_lines: true,
-      trim: true,
-      relax_column_count: true,
-    });
-  } catch (err) {
-    return res.status(400).json({ error: `Could not read the CSV: ${err.message}` });
-  }
-
-  if (records.length === 0) {
-    return res.status(400).json({ error: 'The CSV file has no data rows' });
-  }
-  const missing = ['title', 'value', 'stage'].filter((f) => !fields.includes(f));
-  if (missing.length) {
-    return res.status(400).json({
-      error: `Missing required column(s): ${missing.join(', ')}. Download the template to see the expected headings.`,
-    });
-  }
-
   const isManager = ['manager', 'admin'].includes(req.user.role);
+
+  let table;
+  try {
+    table = await readImportFile(req.file, { includeOwner: isManager });
+  } catch (err) {
+    if (err instanceof ReadError) return res.status(400).json({ error: err.message });
+    console.error('Deal import: could not read file:', err);
+    return res.status(500).json({ error: 'Could not read that file' });
+  }
+
+  if (table.rows.length === 0) {
+    const error = table.readBy === 'ai' ? 'No sales records could be found in that file' : 'The file has no data rows';
+    return res.status(400).json({ error, notes: table.notes });
+  }
+
+  // Which column holds what: the mapping the user checked in the preview, else work it out
+  let mapping = parseClientMapping(req.body?.mapping, table.headers);
+  if (!mapping) {
+    try {
+      mapping = await buildMapping(table);
+    } catch (err) {
+      console.error('Deal import: column matching failed:', err);
+      return res.status(500).json({ error: 'Could not read that file' });
+    }
+  }
+  const fields = mapping.columns;
+  // Rows with no status (e.g. a sales book) are completed sales unless the user says otherwise
+  const defaultStage = VALID_STAGES.includes(req.body?.defaultStage) ? req.body.defaultStage : 'won';
+  const records = table.rows.map(({ line, cells }) => ({
+    line,
+    raw: Object.fromEntries(fields.flatMap((f, i) => (f ? [[f, cells[i] ?? '']] : []))),
+  }));
+
   const today = new Date().toISOString().slice(0, 10);
 
-  // Look-ups: campaigns by name, owners by email or name, existing contacts by name + company
-  const contactsQuery = () => {
-    const q = supabase.from('contacts').select('id, name, company').order('id');
-    return isManager ? q : q.eq('owner_id', req.user.id);
+  // Look-ups: campaigns by name, owners by email or name, existing contacts by name + company.
+  // All limited to what the importer may see: a manager can assign deals to their own reps only.
+  const owners = visibleOwnerIds(req.user);
+  const usersQuery = () => {
+    const q = scopeCompany(supabase.from('users').select('id, name, email'), req.user).order('id');
+    return owners ? q.in('id', owners) : q;
   };
   const [campaignsRes, usersRes, contactsRes] = await Promise.all([
-    fetchAll(() => supabase.from('campaigns').select('id, name').order('id')),
-    isManager ? fetchAll(() => supabase.from('users').select('id, name, email').order('id')) : Promise.resolve({ data: [] }),
-    fetchAll(contactsQuery),
+    fetchAll(() => scopeCompany(supabase.from('campaigns').select('id, name'), req.user).order('id')),
+    isManager ? fetchAll(usersQuery) : Promise.resolve({ data: [] }),
+    fetchAll(() => scopeOwned(supabase.from('contacts').select('id, name, company'), req.user).order('id')),
   ]);
   const lookupError = [campaignsRes, usersRes, contactsRes].find((r) => r.error);
   if (lookupError) return res.status(400).json({ error: lookupError.error.message });
@@ -173,25 +225,28 @@ router.post('/import', upload.single('file'), async (req, res) => {
   const newContacts = new Map(); // key -> contact row to create
   let closedWithoutDate = 0;
   let withoutCreatedDate = 0;
+  const fixCounts = {}; // what readDealRow assumed, by kind
+  const unknownOwners = new Set();
+  const unknownCampaigns = new Set();
+  let ownerIgnored = 0;
 
-  records.forEach((raw, idx) => {
-    const rowNum = idx + 2; // +2: header row + 1-indexing
-    const { row, error } = readDealRow(raw, today);
+  records.forEach(({ line: rowNum, raw }) => {
+    const { row, fixes, error } = readDealRow(raw, today, { stageMap: mapping.stages, defaultStage, rowNum });
     if (error) return skipped.push({ row: rowNum, reason: error });
+    fixes.forEach((f) => (fixCounts[f] = (fixCounts[f] || 0) + 1));
 
+    // An owner or campaign we can't find doesn't stop the deal: it is imported without that link
     let ownerId = req.user.id;
     if (row.owner) {
-      if (!isManager) return skipped.push({ row: rowNum, reason: 'Only managers and admins can set the owner' });
-      ownerId = ownerByKey.get(row.owner.toLowerCase());
-      if (!ownerId) return skipped.push({ row: rowNum, reason: `No SalesMesh account for owner "${row.owner}"` });
+      if (!isManager) ownerIgnored++;
+      else if (ownerByKey.has(row.owner.toLowerCase())) ownerId = ownerByKey.get(row.owner.toLowerCase());
+      else unknownOwners.add(row.owner);
     }
 
     let campaignId = null;
     if (row.campaign) {
-      campaignId = campaignByName.get(row.campaign.toLowerCase());
-      if (!campaignId) {
-        return skipped.push({ row: rowNum, reason: `Unknown campaign "${row.campaign}" — create it on the Campaigns page first` });
-      }
+      campaignId = campaignByName.get(row.campaign.toLowerCase()) ?? null;
+      if (!campaignId) unknownCampaigns.add(row.campaign);
     }
 
     let contactRef = null;
@@ -202,6 +257,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
       else {
         if (!newContacts.has(key)) {
           newContacts.set(key, {
+            company_id: req.user.company_id,
             name,
             company: row.company || null,
             email: row.contact_email || null,
@@ -225,6 +281,7 @@ router.post('/import', upload.single('file'), async (req, res) => {
       rowNum,
       contactRef,
       deal: {
+        company_id: req.user.company_id,
         title: row.title,
         value: row.value,
         stage: row.stage,
@@ -238,19 +295,30 @@ router.post('/import', upload.single('file'), async (req, res) => {
     });
   });
 
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const list = (set) => [...set].slice(0, 5).map((v) => `"${v}"`).join(', ') + (set.size > 5 ? ` and ${set.size - 5} more` : '');
   const warnings = [];
+  const fixed = (kind, message) => fixCounts[kind] && warnings.push(message(fixCounts[kind]));
+  fixed('defaultedStage', (n) => `${plural(n, 'deal has', 'deals have')} no status, so ${n === 1 ? 'it' : 'they'} will be imported as "${defaultStage}".`);
+  fixed('unknownStage', (n) => `${plural(n, 'deal has a status', 'deals have a status')} we couldn't match, so ${n === 1 ? 'it' : 'they'} will be imported as "${defaultStage}".`);
+  fixed('generatedTitle', (n) => `${plural(n, 'deal has', 'deals have')} no name, so one was made from the customer or row (e.g. "Sale – Kamau Builders").`);
+  fixed('blankValue', (n) => `${plural(n, 'deal has', 'deals have')} no amount and will be imported as Ksh 0.`);
+  fixed('closedFromCreated', (n) => `${plural(n, 'won/lost deal has', 'won/lost deals have')} one date, used as both when it started and when it closed.`);
+  fixed('createdAfterClosed', (n) => `${plural(n, 'deal was', 'deals were')} created after ${n === 1 ? 'it' : 'they'} closed; the closed date is used for both.`);
+  fixed('badDate', (n) => `${plural(n, 'date', 'dates')} couldn't be read and ${n === 1 ? 'was' : 'were'} left out.`);
   if (closedWithoutDate) {
-    warnings.push(
-      `${closedWithoutDate} won/lost deal${closedWithoutDate === 1 ? ' has' : 's have'} no closed date, so today will be used. Add a closed_date column for an accurate forecast.`
-    );
+    warnings.push(`${plural(closedWithoutDate, 'won/lost deal has', 'won/lost deals have')} no closed date, so today will be used. Include the sale dates for an accurate forecast.`);
   }
   if (withoutCreatedDate) {
-    warnings.push(
-      `${withoutCreatedDate} deal${withoutCreatedDate === 1 ? ' has' : 's have'} no created date, so today will be used. Add a created_date column for an accurate sales cycle.`
-    );
+    warnings.push(`${plural(withoutCreatedDate, 'deal has', 'deals have')} no created date, so today will be used. Include dates for an accurate sales cycle.`);
   }
-  const ignored = fields.filter((f) => f === null).length;
-  if (ignored) warnings.push(`${ignored} column${ignored === 1 ? ' was' : 's were'} not recognised and will be ignored.`);
+  if (unknownOwners.size) warnings.push(`No SalesMesh account ${req.user.role === 'manager' ? 'on your team ' : ''}for ${list(unknownOwners)}, so those deals will be assigned to you.`);
+  if (ownerIgnored) warnings.push('The salesperson column is ignored: deals you import are assigned to you.');
+  if (unknownCampaigns.size) {
+    warnings.push(`${unknownCampaigns.size === 1 ? 'Campaign' : 'Campaigns'} ${list(unknownCampaigns)} ${unknownCampaigns.size === 1 ? "doesn't" : "don't"} exist yet, so those deals won't be linked to a campaign. Create ${unknownCampaigns.size === 1 ? 'it' : 'them'} on the Campaigns page first to link them.`);
+  }
+  const unused = table.headers.filter((h, i) => !fields[i] && table.rows.some((r) => String(r.cells[i] ?? '').trim()));
+  if (unused.length) warnings.push(`${plural(unused.length, 'column is', 'columns are')} not used: ${unused.map((h) => `"${h || 'no heading'}"`).join(', ')}.`);
 
   const summary = {
     rows: records.length,
@@ -261,6 +329,23 @@ router.post('/import', upload.single('file'), async (req, res) => {
     totalValue: deals.reduce((s, d) => s + d.deal.value, 0),
     byStage: deals.reduce((acc, d) => ({ ...acc, [d.deal.stage]: (acc[d.deal.stage] || 0) + 1 }), {}),
     recognisedColumns: fields.filter(Boolean),
+    // Each of the user's columns and what it was matched to, so the preview can show and change it
+    columns: table.headers.map((header, i) => ({ header, field: fields[i] })),
+    mapping: { columns: fields, stages: mapping.stages, mappedBy: mapping.mappedBy },
+    mappedBy: mapping.mappedBy,
+    // Open the column list in the preview when the user should look at it
+    checkColumns: mapping.mappedBy !== 'headings' || mapping.notes.length > 0 || !fields.includes('title') || !fields.includes('value'),
+    stageColumn: fields.includes('stage'),
+    defaultStage,
+    defaultedRows: (fixCounts.defaultedStage || 0) + (fixCounts.unknownStage || 0),
+    // Each status word in the file and the stage it was read as, so the preview can show and change it
+    statuses: statusSummary(table, fields, mapping.stages, defaultStage),
+    readBy: table.readBy,
+    notes: [...table.notes, ...mapping.notes],
+    ...(table.sheet ? { sheet: table.sheet } : {}),
+    // Rows read from a picture are sent back so the user can check them, and the browser imports
+    // exactly these rows instead of asking Claude to read the picture a second time
+    ...(table.readBy === 'ai' ? { extracted: { headers: table.headers, rows: table.rows.map((r) => r.cells) } } : {}),
   };
 
   if (dryRun || deals.length === 0) {
@@ -298,13 +383,13 @@ router.post('/import', upload.single('file'), async (req, res) => {
 });
 
 // PATCH /api/deals/:id — update a deal (e.g. move stage). Reps may only edit their own
-// deals and cannot reassign them; stage moves are logged as stage_change activities.
+// deals and cannot reassign them; managers may reassign within their team; stage moves are logged as stage_change activities.
 router.patch('/:id', async (req, res) => {
   const { id } = req.params;
 
   const { data: existing, error: fetchError } = await supabase
     .from('deals')
-    .select('id, owner_id, stage')
+    .select('id, owner_id, stage, company_id')
     .eq('id', id)
     .maybeSingle();
 
@@ -316,8 +401,10 @@ router.patch('/:id', async (req, res) => {
 
   const { updates, error: validationError } = buildDealUpdate(req.body, req.user);
   if (validationError) return res.status(400).json({ error: validationError });
-  if (!(await contactIsAssignable(req.user, updates.contact_id))) {
-    return res.status(400).json({ error: 'Contact not found' });
+  const linkError = await checkLinks(req.user, updates);
+  if (linkError) return res.status(400).json({ error: linkError });
+  if ('owner_id' in updates && !(await ownerIsAssignable(req.user, updates.owner_id))) {
+    return res.status(400).json({ error: req.user.role === 'manager' ? 'You can only assign deals to yourself or your own representatives' : 'That user is not in your company' });
   }
   const closedAt = closedAtForStageChange(existing.stage, updates.stage);
   if (closedAt !== undefined) updates.closed_at = closedAt;
@@ -357,7 +444,7 @@ router.delete('/:id', async (req, res) => {
 
   const { data: existing, error: fetchError } = await supabase
     .from('deals')
-    .select('id, owner_id')
+    .select('id, owner_id, company_id')
     .eq('id', id)
     .maybeSingle();
 

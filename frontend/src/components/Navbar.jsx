@@ -18,7 +18,7 @@ const NAV_LINKS = {
     { to: '/manager/campaigns', label: 'Campaigns' },
   ],
   representative: [
-    { to: '/rep', label: 'Overview', end: true },
+    { to: '/rep', label: 'My dashboard', end: true },
     { to: '/rep/deals', label: 'Deals' },
     { to: '/rep/contacts', label: 'Contacts' },
     { to: '/rep/campaigns', label: 'Campaigns' },
@@ -50,7 +50,10 @@ export default function Navbar({ title }) {
           <div className="flex items-center gap-4">
             <div className="hidden text-right sm:block">
               <p className="text-sm font-medium leading-none text-fg">{user?.name}</p>
-              <p className="mt-1 text-xs text-muted">{ROLE_LABELS[user?.role] || user?.role}</p>
+              <p className="mt-1 text-xs text-muted">
+                {ROLE_LABELS[user?.role] || user?.role}
+                {user?.company?.name && ` · ${user.company.name}`}
+              </p>
             </div>
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-brand-700 font-display text-sm font-bold text-white shadow-md shadow-brand-500/30 ring-2 ring-brand-300/40">
               {user?.name?.[0]?.toUpperCase() || '?'}

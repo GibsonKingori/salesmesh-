@@ -243,7 +243,7 @@ export default function DealsPage({ scope }) {
               onClick={() => setShowImport(true)}
               className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-1.5 text-sm font-medium text-fg-soft transition-colors hover:border-fg/20 hover:bg-fg/10 hover:text-fg"
             >
-              Import CSV
+              Import deals
             </button>
             <button
               onClick={() => setShowAddDeal(true)}
@@ -361,7 +361,7 @@ export default function DealsPage({ scope }) {
             <div className="px-5 py-6">
               <EmptyState
                 title={isTeam ? 'No open deals yet' : 'No open deals assigned to you yet'}
-                description="Add your first deal or import a CSV of existing deals to get started."
+                description="Add your first deal or import your existing records (spreadsheet, CSV or a screenshot) to get started."
               />
             </div>
           ) : (

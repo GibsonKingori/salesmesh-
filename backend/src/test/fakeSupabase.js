@@ -6,13 +6,19 @@ import { randomUUID } from 'node:crypto';
 
 export const MAX_ROWS = 1000;
 
-export function createFakeSupabase(seed = {}) {
-  const tables = Object.fromEntries(Object.entries(seed).map(([t, rows]) => [t, rows.map((r) => ({ ...r }))]));
+// Tables whose rows belong to a company (see services/access.js)
+const COMPANY_TABLES = ['users', 'contacts', 'campaigns', 'deals', 'funnel_benchmarks', 'audit_logs'];
+
+// options.companyId puts every seeded row that doesn't name a company into that one
+export function createFakeSupabase(seed = {}, { companyId } = {}) {
+  const inCompany = (table, row) => (companyId && COMPANY_TABLES.includes(table) && !('company_id' in row) ? { company_id: companyId, ...row } : { ...row });
+  const tables = Object.fromEntries(Object.entries(seed).map(([t, rows]) => [t, rows.map((r) => inCompany(t, r))]));
   const rowsOf = (table) => (tables[table] ??= []);
 
   function builder(table) {
     let op = 'select';
     let payload = null;
+    let conflictKeys = ['id'];
     let returning = false;
     let columns = '*';
     let mode = 'many';
@@ -34,10 +40,9 @@ export function createFakeSupabase(seed = {}) {
         affected = payload.map((r) => ({ id: randomUUID(), created_at: new Date().toISOString(), ...r }));
         all.push(...affected);
       } else if (op === 'upsert') {
-        // Matches on "transition" for funnel_benchmarks, "id" everywhere else
+        // Matches on the onConflict columns (default "id"), like PostgREST
         affected = payload.map((r) => {
-          const key = 'transition' in r ? 'transition' : 'id';
-          const existing = all.find((row) => r[key] !== undefined && row[key] === r[key]);
+          const existing = all.find((row) => conflictKeys.every((k) => r[k] !== undefined && row[k] === r[k]));
           if (existing) return Object.assign(existing, r);
           const row = { id: randomUUID(), created_at: new Date().toISOString(), ...r };
           all.push(row);
@@ -87,8 +92,9 @@ export function createFakeSupabase(seed = {}) {
         payload = Array.isArray(rows) ? rows : [rows];
         return api;
       },
-      upsert(rows) {
+      upsert(rows, { onConflict } = {}) {
         op = 'upsert';
+        if (onConflict) conflictKeys = onConflict.split(',').map((k) => k.trim());
         payload = Array.isArray(rows) ? rows : [rows];
         return api;
       },

@@ -4,14 +4,15 @@ import { mirrorUpsert } from '../config/postgresClient.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { recordAudit } from '../services/audit.js';
 import { fetchAll } from '../services/fetchAll.js';
+import { scopeCompany } from '../services/access.js';
 
 const router = express.Router();
 router.use(requireAuth);
 
-// GET /api/campaigns — anyone authenticated can view campaigns (deals reference them)
+// GET /api/campaigns — everyone in the company can view its campaigns (deals reference them)
 router.get('/', async (req, res) => {
   const { data, error } = await fetchAll(() =>
-    supabase.from('campaigns').select('*').order('created_at', { ascending: false }).order('id')
+    scopeCompany(supabase.from('campaigns').select('*'), req.user).order('created_at', { ascending: false }).order('id')
   );
   if (error) return res.status(400).json({ error: error.message });
   return res.json({ campaigns: data });
@@ -29,6 +30,7 @@ router.post('/', requireRole('manager', 'admin'), async (req, res) => {
     .from('campaigns')
     .insert([
       {
+        company_id: req.user.company_id,
         name,
         budget: budget != null ? budget : 0,
         start_date: start_date || null,

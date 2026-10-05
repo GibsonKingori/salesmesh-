@@ -202,6 +202,45 @@ export function priorityScore(deal, openDeals, now = new Date()) {
   return round2(score * 100);
 }
 
+// --- Team performance (manager dashboard): one row per representative, best won value first.
+// Managers and admins only appear if they own deals themselves. ---
+export function teamPerformance(deals, users) {
+  return users
+    .map((u) => {
+      const own = deals.filter((d) => d.owner_id === u.id);
+      const open = own.filter((d) => OPEN_STAGES.includes(d.stage));
+      const won = own.filter((d) => d.stage === 'won');
+      const closedCount = won.length + own.filter((d) => d.stage === 'lost').length;
+      return {
+        id: u.id,
+        name: u.name,
+        role: u.role,
+        totalDeals: own.length,
+        openCount: open.length,
+        openValue: round2(sum(open.map((d) => Number(d.value) || 0))),
+        wonCount: won.length,
+        wonValue: round2(sum(won.map((d) => Number(d.value) || 0))),
+        winRate: closedCount ? round2(won.length / closedCount) : null,
+      };
+    })
+    .filter((row) => row.role === 'representative' || row.totalDeals > 0)
+    .sort((a, b) => b.wonValue - a.wonValue || b.openValue - a.openValue);
+}
+
+// --- Rep dashboard: open deals past their expected close date, and those due within soonDays ---
+export function dealsNeedingAttention(deals, now = new Date(), soonDays = 14) {
+  const today = now.toISOString().slice(0, 10);
+  const soon = new Date(now.getTime() + soonDays * DAY_MS).toISOString().slice(0, 10);
+  const dated = deals
+    .filter((d) => OPEN_STAGES.includes(d.stage) && d.expected_close_date)
+    .sort((a, b) => a.expected_close_date.localeCompare(b.expected_close_date));
+  return {
+    overdue: dated.filter((d) => d.expected_close_date < today),
+    closingSoon: dated.filter((d) => d.expected_close_date >= today && d.expected_close_date <= soon),
+    soonDays,
+  };
+}
+
 export function rankDealsByPriority(deals, now = new Date()) {
   const openDeals = deals.filter((d) => OPEN_STAGES.includes(d.stage));
   return openDeals

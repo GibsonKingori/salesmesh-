@@ -2,7 +2,8 @@ import React from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from './context/AuthContext.jsx';
 import LoginPage from './pages/LoginPage.jsx';
-import OverviewPage from './pages/OverviewPage.jsx';
+import ManagerOverviewPage from './pages/manager/ManagerOverviewPage.jsx';
+import RepOverviewPage from './pages/rep/RepOverviewPage.jsx';
 import DealsPage from './pages/DealsPage.jsx';
 import ContactsPage from './pages/ContactsPage.jsx';
 import CampaignsPage from './pages/manager/CampaignsPage.jsx';
@@ -50,14 +51,14 @@ export default function App() {
       </Route>
 
       <Route path="/manager" element={<ProtectedRoute allowedRoles={['manager']} />}>
-        <Route index element={<OverviewPage key="team" scope="team" />} />
+        <Route index element={<ManagerOverviewPage />} />
         <Route path="deals" element={<DealsPage key="team" scope="team" />} />
         <Route path="contacts" element={<ContactsPage key="team" scope="team" />} />
         <Route path="campaigns" element={<CampaignsPage />} />
       </Route>
 
       <Route path="/rep" element={<ProtectedRoute allowedRoles={['representative']} />}>
-        <Route index element={<OverviewPage key="mine" scope="mine" />} />
+        <Route index element={<RepOverviewPage />} />
         <Route path="deals" element={<DealsPage key="mine" scope="mine" />} />
         <Route path="contacts" element={<ContactsPage key="mine" scope="mine" />} />
         <Route path="campaigns" element={<CampaignResultsPage />} />

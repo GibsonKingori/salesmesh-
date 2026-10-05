@@ -1,5 +1,6 @@
 // Validation for PATCH /api/deals/:id. Kept dependency-free (like analytics.js) so it's
 // unit-testable without Supabase.
+import { canAccessOwned } from './access.js';
 
 export const VALID_STAGES = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
 
@@ -14,9 +15,9 @@ export function closedAtForStageChange(previousStage, nextStage, now = new Date(
   return ['won', 'lost'].includes(nextStage) ? now.toISOString() : null;
 }
 
-export function canEditDeal(user, deal) {
-  return ['manager', 'admin'].includes(user.role) || deal.owner_id === user.id;
-}
+// Same company, and the deal's owner is the user, one of a manager's reps, or anyone (admin).
+// `deal` needs company_id and owner_id.
+export const canEditDeal = (user, deal) => canAccessOwned(user, deal);
 
 // Returns { updates } or { error }. Unknown fields are rejected rather than silently
 // dropped, so a client bug (or a rep trying to set owner_id) fails loudly.

@@ -27,7 +27,7 @@ export default function ConfigurationPage() {
     ['Minimum password length', `${config.minPasswordLength} characters`],
     ['Login rate limit', config.loginRateLimit],
     ['Password reset links last', `${config.passwordResetMinutes} minutes, single use`],
-    ['Manager/Admin sign-up', config.adminSignupEnabled ? 'Allowed with access code' : 'Off (no code set)'],
+    ['Sign-up', 'Join code from the Overview page (new members join as Sales Reps)'],
     ['Local PostgreSQL copy', mirrorText(config.postgresMirror)],
   ];
 

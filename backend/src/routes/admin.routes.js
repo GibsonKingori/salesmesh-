@@ -2,19 +2,22 @@ import express from 'express';
 import { supabase } from '../config/supabaseClient.js';
 import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
-import { MIN_PASSWORD_LENGTH } from './auth.routes.js';
+import { MAX_FAILED_LOGINS, MIN_PASSWORD_LENGTH } from './auth.routes.js';
 import { recordAudit } from '../services/audit.js';
 import { fetchAll } from '../services/fetchAll.js';
 import { createResetToken, RESET_TOKEN_MINUTES } from '../services/passwordReset.js';
 import { VALID_STAGES, closedAtForStageChange } from '../services/dealUpdates.js';
+import { scopeCompany, sameCompany } from '../services/access.js';
+import { findCompany, regenerateJoinCode } from '../services/companies.js';
 
 // Administrator use cases from Chapter 4: System Configuration, Audit Log, and looking
-// after individual accounts. (Role and enable/disable changes live in users.routes.js.)
+// after individual accounts. (Role, manager and enable/disable changes live in users.routes.js.)
+// An admin only ever sees and changes their own company.
 const router = express.Router();
 router.use(requireAuth);
 router.use(requireRole('admin'));
 
-const COUNTED_TABLES = ['deals', 'contacts', 'campaigns', 'activities'];
+const COUNTED_TABLES = ['deals', 'contacts', 'campaigns'];
 const AUDIT_CATEGORIES = ['auth', 'user', 'deal', 'contact', 'campaign', 'settings'];
 const MAX_AUDIT_PAGE = 100;
 
@@ -22,18 +25,33 @@ const MAX_AUDIT_PAGE = 100;
 const likeLiteral = (text) => text.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 const isIsoDate = (v) => typeof v === 'string' && !Number.isNaN(Date.parse(v));
 
-// GET /api/admin/overview — system-wide counts for the admin dashboard
+// GET /api/admin/overview — company-wide counts for the admin dashboard, and the join code
+// people need to sign up to this company
 router.get('/overview', async (req, res) => {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const [users, recentAudit, failedLogins, ...counts] = await Promise.all([
-    fetchAll(() => supabase.from('users').select('id, name, email, role, is_active, created_at').order('created_at', { ascending: false }).order('id')),
-    supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).range(0, 7),
-    supabase.from('audit_logs').select('id', { count: 'exact' }).eq('action', 'auth.login_failed').gte('created_at', since),
-    ...COUNTED_TABLES.map((t) => supabase.from(t).select('id', { count: 'exact' })),
+    fetchAll(() =>
+      scopeCompany(supabase.from('users').select('id, name, email, role, is_active, manager_id, created_at'), req.user)
+        .order('created_at', { ascending: false })
+        .order('id')
+    ),
+    scopeCompany(supabase.from('audit_logs').select('*'), req.user).order('created_at', { ascending: false }).range(0, 7),
+    scopeCompany(supabase.from('audit_logs').select('id', { count: 'exact' }), req.user).eq('action', 'auth.login_failed').gte('created_at', since),
+    ...COUNTED_TABLES.map((t) => scopeCompany(supabase.from(t).select('id', { count: 'exact' }), req.user)),
   ]);
 
   const failed = [users, recentAudit, failedLogins, ...counts].find((r) => r.error);
   if (failed) return res.status(400).json({ error: failed.error.message });
+
+  // Activities have no company of their own: count the ones logged by the company's people
+  const activities = await supabase.from('activities').select('id', { count: 'exact' }).in('user_id', users.data.map((u) => u.id));
+  if (activities.error) return res.status(400).json({ error: activities.error.message });
+  let company;
+  try {
+    company = await findCompany(req.user.company_id);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
 
   const roleCounts = { admin: 0, manager: 0, representative: 0 };
   users.data.forEach((u) => {
@@ -45,12 +63,29 @@ router.get('/overview', async (req, res) => {
       total: users.data.length,
       byRole: roleCounts,
       disabled: users.data.filter((u) => u.is_active === false).length,
+      unassignedReps: users.data.filter((u) => u.role === 'representative' && !u.manager_id).length,
       newest: users.data.slice(0, 5),
     },
-    records: Object.fromEntries(COUNTED_TABLES.map((t, i) => [t, counts[i].count ?? counts[i].data.length])),
+    company: { id: company.id, name: company.name, joinCode: company.join_code },
+    records: {
+      ...Object.fromEntries(COUNTED_TABLES.map((t, i) => [t, counts[i].count ?? counts[i].data.length])),
+      activities: activities.count ?? activities.data.length,
+    },
     failedLogins24h: failedLogins.count ?? failedLogins.data.length,
     recentActivity: recentAudit.data,
   });
+});
+
+// POST /api/admin/company/join-code — replace the company's join code, e.g. after it was
+// shared too widely. The old code stops working; existing accounts are unaffected.
+router.post('/company/join-code', async (req, res) => {
+  try {
+    const company = await regenerateJoinCode(req.user.company_id);
+    await recordAudit(req.user, 'settings.join_code_reset', { entity: 'settings' });
+    return res.json({ company: { id: company.id, name: company.name, joinCode: company.join_code } });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
 });
 
 // GET /api/admin/config — read-only view of how the server is set up
@@ -60,8 +95,7 @@ router.get('/config', (req, res) => {
     environment: process.env.NODE_ENV || 'development',
     sessionLength: process.env.JWT_EXPIRES_IN || '8h',
     minPasswordLength: MIN_PASSWORD_LENGTH,
-    loginRateLimit: '10 attempts per 15 minutes per IP',
-    adminSignupEnabled: Boolean(process.env.ADMIN_SIGNUP_CODE),
+    loginRateLimit: `${MAX_FAILED_LOGINS} failed attempts per account, then a 15-minute lock`,
     passwordResetMinutes: RESET_TOKEN_MINUTES,
     postgresMirror: mirrorStatus ? mirrorStatus() : 'disabled',
   });
@@ -85,7 +119,7 @@ router.get('/audit', async (req, res) => {
     return res.status(400).json({ error: 'from and to must be ISO dates' });
   }
 
-  let query = supabase.from('audit_logs').select('*', { count: 'exact' });
+  let query = scopeCompany(supabase.from('audit_logs').select('*', { count: 'exact' }), req.user);
   if (category) query = query.ilike('action', `${category}.%`);
   if (userId) query = query.eq('user_id', userId);
   if (q?.trim()) query = query.ilike('user_name', `%${likeLiteral(q.trim())}%`);
@@ -99,10 +133,9 @@ router.get('/audit', async (req, res) => {
 
 // --- One account ------------------------------------------------------------------
 
-async function findUser(id) {
-  const { data, error } = await supabase
-    .from('users')
-    .select('id, name, email, role, is_active, created_at')
+// A user in the admin's own company, or null (answered as 404)
+async function findUser(admin, id) {
+  const { data, error } = await scopeCompany(supabase.from('users').select('id, name, email, role, is_active, manager_id, created_at'), admin)
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
@@ -113,12 +146,14 @@ async function findUser(id) {
 // so an admin can see what someone has and fix it if something goes wrong
 router.get('/users/:id', async (req, res) => {
   try {
-    const user = await findUser(req.params.id);
+    const user = await findUser(req.user, req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const [deals, created, activities, audit] = await Promise.all([
-      fetchAll(() => supabase.from('deals').select('*').eq('owner_id', user.id).order('created_at', { ascending: false }).order('id')),
-      fetchAll(() => supabase.from('campaigns').select('*').eq('created_by', user.id).order('id')),
+      fetchAll(() =>
+        scopeCompany(supabase.from('deals').select('*'), req.user).eq('owner_id', user.id).order('created_at', { ascending: false }).order('id')
+      ),
+      fetchAll(() => scopeCompany(supabase.from('campaigns').select('*'), req.user).eq('created_by', user.id).order('id')),
       supabase.from('activities').select('id', { count: 'exact' }).eq('user_id', user.id),
       supabase.from('audit_logs').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).range(0, 9),
     ]);
@@ -130,7 +165,7 @@ router.get('/users/:id', async (req, res) => {
     const linkedIds = [...new Set(deals.data.map((d) => d.campaign_id).filter((cid) => cid && !createdIds.has(cid)))];
     let linked = [];
     if (linkedIds.length) {
-      const { data, error } = await supabase.from('campaigns').select('*').in('id', linkedIds);
+      const { data, error } = await scopeCompany(supabase.from('campaigns').select('*'), req.user).in('id', linkedIds);
       if (error) throw error;
       linked = data;
     }
@@ -164,13 +199,18 @@ router.post('/users/:id/deals', async (req, res) => {
   }
 
   try {
-    const owner = await findUser(req.params.id);
+    const owner = await findUser(req.user, req.params.id);
     if (!owner) return res.status(404).json({ error: 'User not found' });
+    if (campaign_id) {
+      const { data: campaign } = await supabase.from('campaigns').select('company_id').eq('id', campaign_id).maybeSingle();
+      if (!sameCompany(req.user, campaign)) return res.status(400).json({ error: 'Campaign not found' });
+    }
 
     const { data, error } = await supabase
       .from('deals')
       .insert([
         {
+          company_id: req.user.company_id,
           title: title.trim(),
           value: amount,
           stage,
@@ -195,9 +235,11 @@ router.post('/users/:id/deals', async (req, res) => {
   }
 });
 
-// DELETE /api/admin/deals/:id — remove any deal (its activities go with it)
+// DELETE /api/admin/deals/:id — remove any of the company's deals (its activities go with it)
 router.delete('/deals/:id', async (req, res) => {
-  const { data: deleted, error } = await supabase.from('deals').delete().eq('id', req.params.id).select('id, title, owner_id');
+  const { data: deleted, error } = await scopeCompany(supabase.from('deals').delete(), req.user)
+    .eq('id', req.params.id)
+    .select('id, title, owner_id');
   if (error) return res.status(400).json({ error: error.message });
   if (!deleted.length) return res.status(404).json({ error: 'Deal not found' });
 
@@ -218,13 +260,14 @@ router.post('/users/:id/campaigns', async (req, res) => {
   if (Number.isNaN(amount) || amount < 0) return res.status(400).json({ error: 'budget must be 0 or more' });
 
   try {
-    const owner = await findUser(req.params.id);
+    const owner = await findUser(req.user, req.params.id);
     if (!owner) return res.status(404).json({ error: 'User not found' });
 
     const { data, error } = await supabase
       .from('campaigns')
       .insert([
         {
+          company_id: req.user.company_id,
           name: name.trim(),
           budget: amount,
           start_date: start_date || null,
@@ -250,9 +293,7 @@ router.post('/users/:id/campaigns', async (req, res) => {
 
 // DELETE /api/admin/campaigns/:id — deals linked to it are kept and simply lose the link
 router.delete('/campaigns/:id', async (req, res) => {
-  const { data: existing, error: findError } = await supabase
-    .from('campaigns')
-    .select('id, name, created_by')
+  const { data: existing, error: findError } = await scopeCompany(supabase.from('campaigns').select('id, name, created_by'), req.user)
     .eq('id', req.params.id)
     .maybeSingle();
   if (findError) return res.status(400).json({ error: findError.message });
@@ -282,7 +323,7 @@ router.delete('/campaigns/:id', async (req, res) => {
 // pass on to someone who has forgotten their password
 router.post('/users/:id/reset-link', async (req, res) => {
   try {
-    const user = await findUser(req.params.id);
+    const user = await findUser(req.user, req.params.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.is_active === false) {
       return res.status(400).json({ error: 'Enable the account before resetting its password' });
