@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../config/supabaseClient.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { fetchAll } from '../services/fetchAll.js';
+import { visibleDeals } from '../services/dealCache.js';
 import {
   descriptiveSummary,
   conversionFunnel,
@@ -12,7 +13,7 @@ import {
   teamPerformance,
   dealsNeedingAttention,
 } from '../services/analytics.js';
-import { scopeCompany, scopeOwned, visibleOwnerIds } from '../services/access.js';
+import { scopeCompany, visibleOwnerIds } from '../services/access.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -26,10 +27,12 @@ export async function loadBenchmarks(companyId) {
   return Object.fromEntries(data.map((b) => [b.transition, Number(b.rate)]));
 }
 
-async function pipelineAnalytics(deals, companyId) {
+// benchmarks is loadBenchmarks' result, fetched alongside the deals (an Error if that failed)
+function pipelineAnalytics(deals, benchmarks) {
+  if (benchmarks instanceof Error) throw benchmarks;
   return {
     descriptive: descriptiveSummary(deals),
-    diagnostic: conversionFunnel(deals, await loadBenchmarks(companyId)),
+    diagnostic: conversionFunnel(deals, benchmarks),
     predictive: forecastRevenue(deals),
     velocity: pipelineVelocity(deals),
   };
@@ -46,15 +49,16 @@ function scopedUsersQuery(user) {
 // GET /api/analytics/pipeline — descriptive + diagnostic + predictive for a manager's team
 // (or an admin's whole company), plus a per-rep performance breakdown for the manager dashboard
 router.get('/pipeline', requireRole('manager', 'admin'), async (req, res) => {
-  const [{ data: deals, error }, { data: users, error: usersError }] = await Promise.all([
-    fetchAll(() => scopeOwned(supabase.from('deals').select('*'), req.user).order('id')),
+  const [{ data: deals, error }, { data: users, error: usersError }, benchmarks] = await Promise.all([
+    visibleDeals(req.user),
     fetchAll(() => scopedUsersQuery(req.user)),
+    loadBenchmarks(req.user.company_id).catch((err) => err),
   ]);
   if (error) return res.status(400).json({ error: error.message });
   if (usersError) return res.status(400).json({ error: usersError.message });
 
   try {
-    return res.json({ ...(await pipelineAnalytics(deals, req.user.company_id)), team: teamPerformance(deals, users) });
+    return res.json({ ...pipelineAnalytics(deals, benchmarks), team: teamPerformance(deals, users) });
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
@@ -63,21 +67,23 @@ router.get('/pipeline', requireRole('manager', 'admin'), async (req, res) => {
 // GET /api/analytics/me — the same analytics, scoped to the caller's own deals, plus what the
 // rep dashboard needs: deals overdue or closing soon, and the caller's latest logged activities
 router.get('/me', async (req, res) => {
-  const [{ data: deals, error }, { data: activities, error: activitiesError }] = await Promise.all([
-    fetchAll(() => supabase.from('deals').select('*').eq('company_id', req.user.company_id).eq('owner_id', req.user.id).order('id')),
+  const own = { ...req.user, role: 'representative' }; // just the caller's deals, whatever their role
+  const [{ data: deals, error }, { data: activities, error: activitiesError }, benchmarks] = await Promise.all([
+    visibleDeals(own),
     supabase
       .from('activities')
       .select('id, type, notes, created_at, deal_id, deals(title)')
       .eq('user_id', req.user.id)
       .order('created_at', { ascending: false })
       .limit(RECENT_ACTIVITY_COUNT),
+    loadBenchmarks(req.user.company_id).catch((err) => err),
   ]);
   if (error) return res.status(400).json({ error: error.message });
   if (activitiesError) return res.status(400).json({ error: activitiesError.message });
 
   try {
     return res.json({
-      ...(await pipelineAnalytics(deals, req.user.company_id)),
+      ...pipelineAnalytics(deals, benchmarks),
       attention: dealsNeedingAttention(deals),
       recentActivities: activities.map(({ deals: deal, ...a }) => ({ ...a, deal_title: deal?.title ?? null })),
     });
@@ -91,7 +97,7 @@ router.get('/me', async (req, res) => {
 router.get('/campaigns', requireRole('manager', 'admin'), async (req, res) => {
   const [{ data: campaigns, error: campaignsError }, { data: deals, error: dealsError }] = await Promise.all([
     fetchAll(() => scopeCompany(supabase.from('campaigns').select('*'), req.user).order('created_at', { ascending: false }).order('id')),
-    fetchAll(() => scopeOwned(supabase.from('deals').select('*'), req.user).order('id')),
+    visibleDeals(req.user),
   ]);
   if (campaignsError) return res.status(400).json({ error: campaignsError.message });
   if (dealsError) return res.status(400).json({ error: dealsError.message });
@@ -115,9 +121,7 @@ router.get('/campaigns/me', async (req, res) => {
         .order('created_at', { ascending: false })
         .order('id')
     ),
-    fetchAll(() =>
-      supabase.from('deals').select('id, campaign_id, stage, value').eq('company_id', req.user.company_id).eq('owner_id', req.user.id).order('id')
-    ),
+    visibleDeals({ ...req.user, role: 'representative' }),
   ]);
   if (campaignsError) return res.status(400).json({ error: campaignsError.message });
   if (dealsError) return res.status(400).json({ error: dealsError.message });

@@ -29,6 +29,8 @@ const isIsoDate = (v) => typeof v === 'string' && !Number.isNaN(Date.parse(v));
 // people need to sign up to this company
 router.get('/overview', async (req, res) => {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  // Started now so it runs alongside the counts (an Error if it fails)
+  const companyLookup = findCompany(req.user.company_id).catch((err) => err);
   const [users, recentAudit, failedLogins, ...counts] = await Promise.all([
     fetchAll(() =>
       scopeCompany(supabase.from('users').select('id, name, email, role, is_active, manager_id, created_at'), req.user)
@@ -46,12 +48,8 @@ router.get('/overview', async (req, res) => {
   // Activities have no company of their own: count the ones logged by the company's people
   const activities = await supabase.from('activities').select('id', { count: 'exact' }).in('user_id', users.data.map((u) => u.id));
   if (activities.error) return res.status(400).json({ error: activities.error.message });
-  let company;
-  try {
-    company = await findCompany(req.user.company_id);
-  } catch (err) {
-    return res.status(400).json({ error: err.message });
-  }
+  const company = await companyLookup;
+  if (company instanceof Error) return res.status(400).json({ error: company.message });
 
   const roleCounts = { admin: 0, manager: 0, representative: 0 };
   users.data.forEach((u) => {
