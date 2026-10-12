@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App.jsx';
@@ -6,21 +6,17 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import SplashScreen from './components/SplashScreen.jsx';
 import './index.css';
 
+// The splash shows only while the first page's code downloads. With v7_startTransition, later
+// navigations keep the current page on screen until the next one is ready instead of flashing it.
 function Root() {
-  const [booted, setBooted] = useState(false);
-
-  useEffect(() => {
-    const t = setTimeout(() => setBooted(true), 650);
-    return () => clearTimeout(t);
-  }, []);
-
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true }}>
       <AuthProvider>
-        {!booted && <SplashScreen />}
-        <div className={booted ? 'animate-fade-in' : 'opacity-0'}>
-          <App />
-        </div>
+        <Suspense fallback={<SplashScreen />}>
+          <div className="animate-fade-in">
+            <App />
+          </div>
+        </Suspense>
       </AuthProvider>
     </BrowserRouter>
   );
