@@ -1,13 +1,18 @@
 import { jest } from '@jest/globals';
 import { fetchWithRetry } from './supabaseClient.js';
 import { dbErrorMessage } from '../services/dbErrors.js';
+import { goOnline } from './dataSource.js';
 
 const realFetch = global.fetch;
 const networkError = (code) => Object.assign(new TypeError('fetch failed'), { cause: { code } });
 const ok = { ok: true, status: 200 };
 
-beforeEach(() => jest.spyOn(console, 'error').mockImplementation(() => {}));
+beforeEach(() => {
+  jest.spyOn(console, 'error').mockImplementation(() => {});
+  jest.spyOn(console, 'warn').mockImplementation(() => {}); // giving up switches to offline mode
+});
 afterEach(() => {
+  goOnline();
   global.fetch = realFetch;
   jest.restoreAllMocks();
 });
