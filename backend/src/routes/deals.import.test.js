@@ -226,6 +226,7 @@ describe('POST /api/deals/import', () => {
 
   test('without Claude, a title row is skipped and the date and amount columns are found from their contents', async () => {
     claude.error = new FakeAnthropic.BadRequestError('Your credit balance is too low to access the Anthropic API.');
+    const quiet = jest.spyOn(console, 'error').mockImplementation(() => {}); // the server logs the credit error; expected here
     const csv = 'MAUZO YA MWEZI\nSiku,Kitu,Mtu,Namba,Pesa\n02/03/2026,Sofa,Grace,0712 345 678,"Ksh 45,000/="\n05 Mar 2026,Table,Otieno,+254722000111,30000\n';
     const res = await upload(manager, csv, { dryRun: 1 });
     expect(res.body.columns).toEqual([
@@ -237,6 +238,7 @@ describe('POST /api/deals/import', () => {
     ]);
     expect(res.body).toMatchObject({ imported: 2, totalValue: 75000 });
     expect(res.body.notes.join(' ')).toMatch(/run out of credit/);
+    quiet.mockRestore();
   });
 
   test('if Claude is unavailable, known headings still work and the user is told to check the columns', async () => {
