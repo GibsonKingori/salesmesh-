@@ -1,5 +1,6 @@
 import pg from 'pg';
 import dotenv from 'dotenv';
+import { forgetDeals } from '../services/dealCache.js';
 
 dotenv.config();
 
@@ -87,7 +88,9 @@ pool?.on('error', (err) => {
 });
 
 // Fire-and-log wrappers used by the routes after a Supabase write succeeds
+// (they also clear the cached deal lists, so the next read sees the change)
 export async function mirrorUpsert(table, rows) {
+  forgetDeals(table);
   if (!pool) return;
   const list = Array.isArray(rows) ? rows : [rows];
   mirrorState.writes++;
@@ -100,6 +103,7 @@ export async function mirrorUpsert(table, rows) {
 }
 
 export async function mirrorDelete(table, rows) {
+  forgetDeals(table);
   if (!pool) return;
   const pk = primaryKeyOf(table);
   const list = (Array.isArray(rows) ? rows : [rows]).filter(Boolean);

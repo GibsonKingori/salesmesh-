@@ -1,20 +1,65 @@
-import React from 'react';
+import React, { lazy, useEffect } from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from './context/AuthContext.jsx';
 import LoginPage from './pages/LoginPage.jsx';
-import ManagerOverviewPage from './pages/manager/ManagerOverviewPage.jsx';
-import RepOverviewPage from './pages/rep/RepOverviewPage.jsx';
-import DealsPage from './pages/DealsPage.jsx';
-import ContactsPage from './pages/ContactsPage.jsx';
-import CampaignsPage from './pages/manager/CampaignsPage.jsx';
-import CampaignResultsPage from './pages/CampaignResultsPage.jsx';
-import AdminOverviewPage from './pages/admin/AdminOverviewPage.jsx';
-import AccountsPage from './pages/admin/AccountsPage.jsx';
-import AccountDetailPage from './pages/admin/AccountDetailPage.jsx';
-import ForgotPasswordPage from './pages/ForgotPasswordPage.jsx';
-import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
-import ConfigurationPage from './pages/admin/ConfigurationPage.jsx';
-import AuditLogPage from './pages/admin/AuditLogPage.jsx';
+
+// Each page is its own download, so the first load doesn't wait for every page and the chart
+// library. main.jsx shows the splash only for the very first page; after that the current page
+// stays on screen while the next one downloads.
+const loaders = [];
+const RELOAD_KEY = 'salesmesh_chunk_reload';
+function lazyPage(load) {
+  loaders.push(load);
+  return lazy(() =>
+    load()
+      .then((page) => {
+        try {
+          sessionStorage.removeItem(RELOAD_KEY);
+        } catch {
+          /* storage unavailable */
+        }
+        return page;
+      })
+      .catch((err) => {
+        // A tab opened before the app was rebuilt or the dev server restarted asks for page files
+        // that no longer exist. Reload once to get the current ones instead of showing a blank page.
+        let reloaded = true;
+        try {
+          reloaded = sessionStorage.getItem(RELOAD_KEY) === '1';
+          if (!reloaded) sessionStorage.setItem(RELOAD_KEY, '1');
+        } catch {
+          /* storage unavailable: don't risk a reload loop */
+        }
+        if (!reloaded) {
+          window.location.reload();
+          return new Promise(() => {}); // keep the splash up until the reload happens
+        }
+        throw err;
+      })
+  );
+}
+
+// Once the app is idle, download the remaining pages so moving between them is instant
+function usePreloadPages() {
+  useEffect(() => {
+    const preload = () => loaders.forEach((load) => load().catch(() => {}));
+    const id = window.requestIdleCallback ? window.requestIdleCallback(preload) : setTimeout(preload, 1500);
+    return () => (window.cancelIdleCallback ? window.cancelIdleCallback(id) : clearTimeout(id));
+  }, []);
+}
+const ManagerOverviewPage = lazyPage(() => import('./pages/manager/ManagerOverviewPage.jsx'));
+const RepOverviewPage = lazyPage(() => import('./pages/rep/RepOverviewPage.jsx'));
+const DealsPage = lazyPage(() => import('./pages/DealsPage.jsx'));
+const ContactsPage = lazyPage(() => import('./pages/ContactsPage.jsx'));
+const CampaignsPage = lazyPage(() => import('./pages/manager/CampaignsPage.jsx'));
+const CampaignResultsPage = lazyPage(() => import('./pages/CampaignResultsPage.jsx'));
+const AdminOverviewPage = lazyPage(() => import('./pages/admin/AdminOverviewPage.jsx'));
+const AccountsPage = lazyPage(() => import('./pages/admin/AccountsPage.jsx'));
+const AccountDetailPage = lazyPage(() => import('./pages/admin/AccountDetailPage.jsx'));
+const ForgotPasswordPage = lazyPage(() => import('./pages/ForgotPasswordPage.jsx'));
+const ResetPasswordPage = lazyPage(() => import('./pages/ResetPasswordPage.jsx'));
+const ConfigurationPage = lazyPage(() => import('./pages/admin/ConfigurationPage.jsx'));
+const AuditLogPage = lazyPage(() => import('./pages/admin/AuditLogPage.jsx'));
 import { HOME_BY_ROLE } from './lib/roles.js';
 
 function ProtectedRoute({ allowedRoles }) {
@@ -33,6 +78,7 @@ function RoleRedirect() {
 }
 
 export default function App() {
+  usePreloadPages();
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />

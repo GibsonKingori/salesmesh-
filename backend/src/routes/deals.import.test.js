@@ -361,4 +361,20 @@ describe('more than 1,000 deals', () => {
     expect(list.body.deals).toHaveLength(1500);
     expect(new Set(list.body.deals.map((d) => d.id)).size).toBe(1500);
   });
+
+  test('a big import saves and mirrors every row, across several chunks', async () => {
+    const lines = Array.from({ length: 1234 }, (_, i) => `Order ${i},${1000 + i},Won,01/03/2026,Customer ${i % 600}`);
+    const before = fake.tables.deals.length;
+    const res = await upload(rep, ['Item,Amount,Status,Date,Customer', ...lines].join('\n'));
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ imported: 1234, newContacts: 600 });
+    expect(fake.tables.deals.length - before).toBe(1234);
+    const mirrored = (table) => mirrorUpsert.mock.calls.filter(([t]) => t === table).reduce((n, [, rows]) => n + rows.length, 0);
+    expect(mirrored('deals')).toBe(1234);
+    expect(mirrored('contacts')).toBe(600);
+    // Every deal points at its customer
+    const imported = fake.tables.deals.slice(before);
+    expect(imported.every((d) => d.contact_id)).toBe(true);
+  });
 });
