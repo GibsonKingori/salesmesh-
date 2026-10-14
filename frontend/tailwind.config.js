@@ -1,7 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
-  // Light by default; any element with class="dark" (header, login brand panel) flips its subtree
+  // The user's theme puts "dark" on <html> (context/ThemeContext.jsx); the header, login brand panel
+  // and splash carry their own "dark" class, so they stay dark in either theme
   darkMode: 'class',
   theme: {
     extend: {
