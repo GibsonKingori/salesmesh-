@@ -80,7 +80,9 @@ describe('Ollama', () => {
 
   test("a PDF that can't be opened gets a clear message instead of a crash", async () => {
     global.fetch = jest.fn();
+    const quiet = jest.spyOn(console, 'warn').mockImplementation(() => {}); // pdf.js warns while it tries to repair the file
     await expect(askAiJson({ prompt: 'x', pdf: Buffer.from('not a pdf'), schema })).rejects.toBeInstanceOf(ReadError);
     expect(global.fetch).not.toHaveBeenCalled();
+    quiet.mockRestore();
   });
 });
