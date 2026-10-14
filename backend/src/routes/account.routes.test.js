@@ -101,6 +101,41 @@ describe('password reset', () => {
     expect(auditActions()).toEqual(expect.arrayContaining(['auth.password_reset_requested', 'auth.password_reset']));
   });
 
+  test('a locked-out user can log in straight after resetting their password', async () => {
+    for (let i = 0; i < 5; i++) {
+      await request(app).post('/api/auth/login').send({ email: manager.email, password: 'wrong-guess' });
+    }
+    const locked = await request(app).post('/api/auth/login').send({ email: manager.email, password: PASSWORD });
+    expect(locked.status).toBe(429);
+
+    const forgot = await request(app).post('/api/auth/forgot-password').send({ email: manager.email });
+    const token = new URLSearchParams(forgot.body.resetPath.split('?')[1]).get('token');
+    await request(app).post('/api/auth/reset-password').send({ token, password: 'brand-new-pass' }).expect(200);
+
+    const login = await request(app).post('/api/auth/login').send({ email: manager.email, password: 'brand-new-pass' });
+    expect(login.status).toBe(200);
+  });
+
+  test('an account whose email has capitals can reset and log in with any casing', async () => {
+    fake.tables.users.find((u) => u.id === rep.id).email = 'Rae.Smith@Example.com';
+    const forgot = await request(app).post('/api/auth/forgot-password').send({ email: 'rae.smith@example.com' });
+    const token = new URLSearchParams(forgot.body.resetPath.split('?')[1]).get('token');
+    await request(app).post('/api/auth/reset-password').send({ token, password: 'brand-new-pass' }).expect(200);
+
+    const login = await request(app).post('/api/auth/login').send({ email: ' rae.smith@EXAMPLE.com ', password: 'brand-new-pass' });
+    expect(login.status).toBe(200);
+  });
+
+  test('the same link submitted twice at once only works once', async () => {
+    const forgot = await request(app).post('/api/auth/forgot-password').send({ email: admin.email });
+    const token = new URLSearchParams(forgot.body.resetPath.split('?')[1]).get('token');
+    const results = await Promise.all([
+      request(app).post('/api/auth/reset-password').send({ token, password: 'first-new-pass' }),
+      request(app).post('/api/auth/reset-password').send({ token, password: 'second-new-pass' }),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 400]);
+  });
+
   test('an expired link is refused', async () => {
     const { hashToken } = await import('../services/passwordReset.js');
     fake.tables.password_resets = [

@@ -32,10 +32,14 @@ const emailOrIpKey = (req) => {
   return email ? `email:${email}` : `ip:${ipKeyGenerator(req.ip)}`;
 };
 
+// Emails are matched ignoring case and surrounding spaces, so "Mo@Example.com " finds the same
+// account at login as at forgot-password. ILIKE wildcards are escaped so "%" can't match other emails.
+const findUserByEmail = (email, columns) =>
+  supabase.from('users').select(columns).ilike('email', email.trim().replace(/[\\%_]/g, (ch) => `\\${ch}`)).maybeSingle();
+
 // So a lockout shows up in that company's audit log (null if no such account)
 async function companyIdForEmail(email) {
-  const pattern = email.replace(/[\\%_]/g, (ch) => `\\${ch}`);
-  const { data } = await supabase.from('users').select('company_id').ilike('email', pattern).maybeSingle();
+  const { data } = await findUserByEmail(email, 'company_id');
   return data?.company_id ?? null;
 }
 
@@ -151,11 +155,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     return res.status(400).json({ error: 'email and password are required' });
   }
 
-  const { data: user, error } = await supabase
-    .from('users')
-    .select('id, name, email, password_hash, role, is_active, company_id')
-    .eq('email', email)
-    .single();
+  const { data: user, error } = await findUserByEmail(email, 'id, name, email, password_hash, role, is_active, company_id');
 
   if (error || !user) {
     await recordAudit(null, 'auth.login_failed', { details: { email } });
@@ -203,9 +203,7 @@ router.post('/forgot-password', forgotPasswordLimiter, async (req, res) => {
   if (!email) return res.status(400).json({ error: 'email is required' });
 
   const message = `If that email has an active account, a reset link has been created. It works for ${RESET_TOKEN_MINUTES} minutes.`;
-  // Escape ILIKE wildcards so "%" in the input can't match other people's emails
-  const pattern = email.replace(/[\\%_]/g, (ch) => `\\${ch}`);
-  const { data: user, error } = await supabase.from('users').select('id, name, email, is_active').ilike('email', pattern).maybeSingle();
+  const { data: user, error } = await findUserByEmail(email, 'id, name, email, is_active');
   if (error) return res.status(400).json({ error: error.message });
   if (!user || user.is_active === false) {
     await recordAudit(null, 'auth.password_reset_requested', { details: { email, matched: false } });
@@ -235,9 +233,20 @@ router.post('/reset-password', ipLimiter, async (req, res) => {
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
-  if (!reset) {
-    return res.status(400).json({ error: 'This reset link is invalid or has expired. Request a new one.' });
-  }
+  const invalidLink = () => res.status(400).json({ error: 'This reset link is invalid or has expired. Request a new one.' });
+  if (!reset) return invalidLink();
+
+  // Claim the link before changing the password, so two submissions of the same link
+  // (double click, two tabs) can't both succeed
+  const { data: claimed, error: claimError } = await supabase
+    .from('password_resets')
+    .update({ used_at: new Date().toISOString() })
+    .eq('id', reset.id)
+    .is('used_at', null)
+    .select();
+  if (claimError) return res.status(400).json({ error: claimError.message });
+  if (!claimed?.length) return invalidLink();
+  const releaseLink = () => supabase.from('password_resets').update({ used_at: null }).eq('id', reset.id);
 
   const password_hash = await bcrypt.hash(password, 10);
   const { data: user, error } = await supabase
@@ -246,16 +255,17 @@ router.post('/reset-password', ipLimiter, async (req, res) => {
     .eq('id', reset.user_id)
     .select()
     .maybeSingle();
-  if (error) return res.status(400).json({ error: error.message });
+  if (error) {
+    // The password wasn't changed, so let the user try the same link again
+    await releaseLink();
+    return res.status(400).json({ error: error.message });
+  }
   if (!user) return res.status(400).json({ error: 'This account no longer exists' });
   await mirrorUpsert('users', user);
+  await mirrorUpsert('password_resets', claimed);
 
-  const { data: used } = await supabase
-    .from('password_resets')
-    .update({ used_at: new Date().toISOString() })
-    .eq('id', reset.id)
-    .select();
-  await mirrorUpsert('password_resets', used);
+  // Wrong guesses before the reset shouldn't keep the user locked out of their new password
+  await loginLimiter.resetKey(`email:${user.email.trim().toLowerCase()}`);
 
   await recordAudit(user, 'auth.password_reset', {
     entity: 'user',
