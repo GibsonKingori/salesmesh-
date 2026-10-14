@@ -8,6 +8,7 @@ import { buildDealUpdate, canEditDeal, closedAtForStageChange } from '../service
 import { parseDealQuery, applyDealFilters, matchesDealFilters } from '../services/dealFilters.js';
 import { recordAudit } from '../services/audit.js';
 import { fetchAll } from '../services/fetchAll.js';
+import { newestFirst, visibleDeals } from '../services/dealCache.js';
 import { CLOSED_STAGES, contactKey, dateToTimestamp, parseStage, readDealRow, simplify } from '../services/dealImport.js';
 import { buildMapping, parseClientMapping } from '../services/columnMapper.js';
 import { VALID_STAGES } from '../services/dealUpdates.js';
@@ -62,13 +63,14 @@ router.get('/', async (req, res) => {
   const { filters, page, error: queryError } = parseDealQuery(req.query, req.user);
   if (queryError) return res.status(400).json({ error: queryError });
 
-  const buildQuery = () =>
-    applyDealFilters(scopedDealsQuery(req.user, { orderBy: filters.status === 'closed' ? 'updated_at' : 'created_at' }), filters);
+  const orderBy = filters.status === 'closed' ? 'updated_at' : 'created_at';
+  const buildQuery = () => applyDealFilters(scopedDealsQuery(req.user, { orderBy }), filters);
 
   if (!page) {
-    const { data, error } = await fetchAll(buildQuery);
+    const { data, error } = await visibleDeals(req.user);
     if (error) return res.status(400).json({ error: error.message });
-    return res.json({ deals: data, total: data.length });
+    const deals = data.filter((d) => matchesDealFilters(d, filters)).sort(newestFirst(orderBy));
+    return res.json({ deals, total: deals.length });
   }
 
   const { data, count, error } = await buildQuery().range(page.offset, page.offset + page.limit - 1);
@@ -83,10 +85,11 @@ router.get('/priority', async (req, res) => {
   const { filters, page, error: queryError } = parseDealQuery(req.query, req.user);
   if (queryError) return res.status(400).json({ error: queryError });
 
-  const { data, error } = await fetchAll(() => scopedDealsQuery(req.user));
+  const { data, error } = await visibleDeals(req.user);
   if (error) return res.status(400).json({ error: error.message });
 
-  const ranked = rankDealsByPriority(data).filter((d) => matchesDealFilters(d, filters));
+  // Newest first before ranking, so deals with equal scores stay newest first
+  const ranked = rankDealsByPriority([...data].sort(newestFirst())).filter((d) => matchesDealFilters(d, filters));
   const deals = page ? ranked.slice(page.offset, page.offset + page.limit) : ranked;
   return res.json({ deals, total: ranked.length });
 });
@@ -133,6 +136,32 @@ router.post('/', async (req, res) => {
 // defaultStage (stage for rows without a status, default "won").
 // ?dryRun=1 checks everything and returns the preview without saving.
 const IMPORT_CHUNK = 500;
+const PARALLEL_INSERTS = 4;
+
+// Saves rows in chunks, a few chunks at a time (each Supabase round trip is slow, so one after
+// another made big imports take minutes), and mirrors what was saved. No new chunk is started
+// after an error. Returns { saved, error }.
+async function insertInChunks(table, rows) {
+  const chunks = [];
+  for (let i = 0; i < rows.length; i += IMPORT_CHUNK) chunks.push(rows.slice(i, i + IMPORT_CHUNK));
+  const saved = [];
+  const mirrored = [];
+  let error = null;
+  let next = 0;
+  const worker = async () => {
+    while (!error && next < chunks.length) {
+      const result = await supabase.from(table).insert(chunks[next++]).select();
+      if (result.error) error = result.error;
+      else {
+        saved.push(...result.data);
+        mirrored.push(mirrorUpsert(table, result.data));
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(PARALLEL_INSERTS, chunks.length) }, worker));
+  await Promise.all(mirrored);
+  return { saved, error };
+}
 
 function statusSummary(table, fields, stageMap, defaultStage) {
   const i = fields.indexOf('stage');
@@ -355,9 +384,8 @@ router.post('/import', uploadFile, async (req, res) => {
 
   // Save: new contacts first so deals can point at them, then deals in chunks
   if (newContacts.size) {
-    const { data: created, error } = await supabase.from('contacts').insert([...newContacts.values()]).select();
+    const { saved: created, error } = await insertInChunks('contacts', [...newContacts.values()]);
     if (error) return res.status(400).json({ error: error.message, ...summary });
-    await mirrorUpsert('contacts', created);
     created.forEach((c) => contactByKey.set(contactKey(c.name, c.company), c.id));
   }
   const rows = deals.map(({ deal, contactRef }) => ({
@@ -365,14 +393,10 @@ router.post('/import', uploadFile, async (req, res) => {
     contact_id: contactRef ? contactRef.id ?? contactByKey.get(contactRef.key) ?? null : null,
   }));
 
-  let saved = 0;
-  for (let i = 0; i < rows.length; i += IMPORT_CHUNK) {
-    const { data, error } = await supabase.from('deals').insert(rows.slice(i, i + IMPORT_CHUNK)).select();
-    if (error) {
-      return res.status(400).json({ error: `Stopped after ${saved} deals: ${error.message}`, ...summary, imported: saved });
-    }
-    await mirrorUpsert('deals', data);
-    saved += data.length;
+  const { saved: savedDeals, error: saveError } = await insertInChunks('deals', rows);
+  const saved = savedDeals.length;
+  if (saveError) {
+    return res.status(400).json({ error: `Stopped after ${saved} deals: ${saveError.message}`, ...summary, imported: saved });
   }
 
   await recordAudit(req.user, 'deal.import', {

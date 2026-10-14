@@ -1,10 +1,10 @@
 // Supabase (PostgREST) returns at most 1,000 rows per request, so a plain .select() on a
 // big table silently stops at 1,000. fetchAll pages through until every row is read.
 // `buildQuery` must return a fresh, ordered query each call (paging needs a stable order).
-// Pages are requested a few at a time in parallel, so 9,000 rows take about two round trips.
+// Pages are requested ten at a time in parallel, so up to 10,000 rows take one round trip.
 // Returns { data, error } like a normal Supabase call.
 export const PAGE_SIZE = 1000;
-const PARALLEL_PAGES = 5;
+const PARALLEL_PAGES = 10;
 
 export async function fetchAll(buildQuery, pageSize = PAGE_SIZE) {
   const rows = [];
