@@ -305,6 +305,11 @@ describe('importing other file formats', () => {
     expect(res.body.extracted.rows[0].slice(0, 3)).toEqual(['Shop shelving', 'KES 120,000', 'won']);
     expect(res.body.skipped).toEqual([]);
     expect(claude.requests[0].messages[0].content[0]).toMatchObject({ type: 'image', source: { type: 'base64', media_type: 'image/png' } });
+    // ...nor asked for, and fields the picture doesn't show needn't be written out
+    const rowSchema = claude.requests[0].output_config.format.schema.properties.rows.items;
+    expect(rowSchema.properties).not.toHaveProperty('owner');
+    expect(rowSchema.required).toBeUndefined();
+    expect(claude.requests[0].output_config.effort).toBe('low');
     expect(fake.tables.deals).toHaveLength(0);
   });
 
