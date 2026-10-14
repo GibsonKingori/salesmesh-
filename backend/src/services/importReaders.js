@@ -160,8 +160,8 @@ async function readWithAi(file, mediaType, { includeOwner }) {
   if (mediaType !== PDF_TYPE && file.buffer.length > MAX_IMAGE_BYTES) {
     throw new ReadError('Screenshots must be under 5 MB. Crop it or save it as a JPG.');
   }
-  const { rows, notes } = await readTableWithAi(file.buffer, mediaType);
   const headers = includeOwner ? EXTRACT_FIELDS : EXTRACT_FIELDS.filter((f) => f !== 'owner');
+  const { rows, notes } = await readTableWithAi(file.buffer, mediaType, headers);
   return {
     headers,
     rows: rows.map((r, i) => ({ line: i + 1, cells: headers.map((h) => cellText(r[h])) })),

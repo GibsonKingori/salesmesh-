@@ -207,6 +207,9 @@ export default function ImportCsvModal({ onClose, onImported }) {
     if (!f) return;
     setFile(f);
     setError('');
+    // Pictures are read by the vision model; anything else may need the text model to match columns.
+    // Starting it now means it is (mostly) loaded by the time "Check file" is pressed.
+    api.post(`/deals/import/warmup${f.type.startsWith('image/') ? '?image=1' : ''}`).catch(() => {});
   };
 
   // Screenshots can be pasted straight in (Ctrl+V) while choosing a file

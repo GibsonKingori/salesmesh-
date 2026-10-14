@@ -2,24 +2,16 @@
 
 Web-based sales analytics dashboard for Kenyan SMEs. PERN stack (PostgreSQL/Supabase, Express, React, Node).
 
-## Iteration 1 checklist (target: 30% by Oct 2)
-- [x] Repo structure
-- [x] Express skeleton + JWT auth (register/login)
-- [x] Role-based middleware (`requireAuth`, `requireRole`)
-- [x] Supabase schema for User, Deal, Contact, Campaign, Activity
-- [x] React + Tailwind skeleton with role-based routing
-- [x] Supabase project actually created and schema run
-- [x] `.env` filled in and both servers running locally
-- [x] First real login working end-to-end
-- [x] First commit made locally
-- [ ] Push to GitHub (no remote configured yet)
+[![CI](https://github.com/GibsonKingori/salesmesh-/actions/workflows/ci.yml/badge.svg)](https://github.com/GibsonKingori/salesmesh-/actions/workflows/ci.yml)
 
-## Ahead of Iteration 1 (pulled forward from later iterations)
-- [x] Deal CRUD (create + list) with a real "Add deal" UI
-- [x] Bulk import for deals from CSV, Excel/ODS, text, JSON, or a screenshot/PDF read by AI, with per-row validation and error reporting
-- [x] Contacts CRUD (API)
-- [x] Activity log CRUD (API)
-- [x] Row-Level Security enabled on all five tables (`users`, `contacts`, `campaigns` were flagged by Supabase's advisor and have since been locked to `service_role` only)
+## Features
+- Three role dashboards from the Chapter 4 use case diagram: Sales Representative, Sales Manager and Administrator
+- Multiple companies with join codes, plus manager teams: a company never sees another's data, and a manager only sees their own reps
+- Deals with a pipeline board, stage changes, close dates and a per-deal activity log; contacts and campaigns
+- Descriptive analytics: KPIs, conversion funnel against targets, win rate, sales cycle, campaign results and CSV report export
+- Bulk import from CSV, Excel/ODS, text, JSON, or a screenshot/PDF read by AI, with a preview before anything is saved
+- Security: JWT auth, role-based middleware, row-level security on every table, login lockout, rate limiting, Helmet, password reset links and a full audit log
+- Optional local PostgreSQL mirror of the Supabase database that keeps itself in sync
 
 ## Setup
 
@@ -53,14 +45,17 @@ npm run dev              # http://localhost:5173
 ```
 
 ### 4. Create your first user
-```bash
-curl -X POST http://localhost:4000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Gibson","email":"gibson@example.com","password":"changeme123"}'
-```
-Then log in at http://localhost:5173/login.
+Open http://localhost:5173/login, choose **Register**, and pick **Start a company**.
 
 On the **Register** tab, choose **Start a company** to create a new company: you become its **Admin**, and the admin overview shows a join code to share with your team. Everyone else chooses **Join a company** and enters that code; they join as **Sales Reps**. The admin then changes roles and assigns each rep to a manager under **Accounts**. Companies never see each other's data, and a manager only sees the reps assigned to them.
+
+### Demo data (optional)
+`sample-data/` holds the Maven Analytics CRM sample, converted to Kenyan shillings. To load it into your company:
+```bash
+cd backend
+DEMO_PASSWORD=<a shared password> DEMO_JOIN_CODE=<your join code>   node scripts/seedDemoAccounts.js ../sample-data/maven-sales-teams.csv
+```
+This creates the demo managers and reps (e.g. `moses.frase@maventech.demo`), with each rep assigned to their manager. Then sign in as the admin or a manager and import `sample-data/maven-crm-deals-kes.csv` under **Deals → Import deals**.
 
 ### Dashboards by role (Chapter 4 use case diagram)
 - **Sales Representative** (`/rep`): own dashboard, deals, contacts, activities and campaign results.
@@ -93,8 +88,9 @@ A disabled user can't log in, and any session they already have stops working wi
 
 Requests, completed resets and admin-issued links all appear in the audit log.
 
-## What's next (Iteration 2, Oct 3–14)
-- Pipeline-stage board view, descriptive analytics charts (Recharts)
-- Contacts and activity-log UI (backend already done)
-- Deal edit/delete UI (currently create + list only)
-- Push repo to GitHub, wire up GitHub Actions to run Jest/Supertest on push
+## Tests
+```bash
+cd backend
+npm test        # Jest + Supertest; Supabase, PostgreSQL and the AI providers are mocked
+```
+GitHub Actions runs the backend tests and the frontend build on every push to `main` and on every pull request (`.github/workflows/ci.yml`).

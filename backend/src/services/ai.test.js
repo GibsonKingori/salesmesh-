@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { aiProvider, askAiJson, ReadError } from './ai.js';
+import { aiProvider, askAiJson, ReadError, warmUpAi } from './ai.js';
 
 const schema = { type: 'object', properties: { rows: { type: 'array' } }, required: ['rows'], additionalProperties: false };
 const realFetch = global.fetch;
@@ -44,6 +44,25 @@ describe('Ollama', () => {
     expect(JSON.parse(global.fetch.mock.calls[0][1].body).model).toBe('qwen2.5:3b');
   });
 
+  test('keeps the model loaded between requests', async () => {
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ message: { content: '{"rows":[]}' } }) }));
+    await askAiJson({ prompt: 'x', schema });
+    expect(JSON.parse(global.fetch.mock.calls[0][1].body).keep_alive).toBe('30m');
+  });
+
+  test('warming up loads the model the import will use, and never throws', async () => {
+    global.fetch = jest.fn(async () => ({ ok: true }));
+    await warmUpAi({ image: true });
+    const [url, init] = global.fetch.mock.calls[0];
+    expect(url).toBe('http://localhost:11434/api/generate');
+    expect(JSON.parse(init.body)).toEqual({ model: 'qwen2.5vl:3b', keep_alive: '30m' });
+
+    global.fetch = jest.fn(async () => {
+      throw new TypeError('fetch failed');
+    });
+    await expect(warmUpAi()).resolves.toBeUndefined();
+  });
+
   test('explains when Ollama is not running', async () => {
     global.fetch = jest.fn(async () => {
       throw new TypeError('fetch failed');
@@ -61,7 +80,9 @@ describe('Ollama', () => {
 
   test("a PDF that can't be opened gets a clear message instead of a crash", async () => {
     global.fetch = jest.fn();
+    const quiet = jest.spyOn(console, 'warn').mockImplementation(() => {}); // pdf.js warns while it tries to repair the file
     await expect(askAiJson({ prompt: 'x', pdf: Buffer.from('not a pdf'), schema })).rejects.toBeInstanceOf(ReadError);
     expect(global.fetch).not.toHaveBeenCalled();
+    quiet.mockRestore();
   });
 });
