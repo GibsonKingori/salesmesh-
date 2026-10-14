@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { supabase } from '../config/supabaseClient.js';
+import { dbErrorMessage } from '../services/dbErrors.js';
 import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth } from '../middleware/auth.js';
 import { rankDealsByPriority } from '../services/analytics.js';
@@ -13,6 +14,7 @@ import { CLOSED_STAGES, contactKey, dateToTimestamp, parseStage, readDealRow, si
 import { buildMapping, parseClientMapping } from '../services/columnMapper.js';
 import { VALID_STAGES } from '../services/dealUpdates.js';
 import { readImportFile, ReadError } from '../services/importReaders.js';
+import { warmUpAi } from '../services/ai.js';
 import { canAccessOwned, sameCompany, scopeCompany, scopeOwned, visibleOwnerIds } from '../services/access.js';
 
 const router = express.Router();
@@ -185,6 +187,13 @@ const uploadFile = (req, res, next) =>
     return res.status(400).json({ error });
   });
 
+// POST /api/deals/import/warmup?image=1 — the import window calls this when a file is chosen, so a
+// local AI model is already loading before the file is checked. Answers at once.
+router.post('/import/warmup', (req, res) => {
+  warmUpAi({ image: ['1', 'true'].includes(String(req.query.image)) });
+  res.status(204).end();
+});
+
 router.post('/import', uploadFile, async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'A file is required (form field name "file")' });
@@ -239,7 +248,7 @@ router.post('/import', uploadFile, async (req, res) => {
     fetchAll(() => scopeOwned(supabase.from('contacts').select('id, name, company'), req.user).order('id')),
   ]);
   const lookupError = [campaignsRes, usersRes, contactsRes].find((r) => r.error);
-  if (lookupError) return res.status(400).json({ error: lookupError.error.message });
+  if (lookupError) return res.status(400).json({ error: dbErrorMessage(lookupError.error) });
 
   const campaignByName = new Map(campaignsRes.data.map((c) => [c.name.trim().toLowerCase(), c.id]));
   const ownerByKey = new Map();
@@ -385,7 +394,7 @@ router.post('/import', uploadFile, async (req, res) => {
   // Save: new contacts first so deals can point at them, then deals in chunks
   if (newContacts.size) {
     const { saved: created, error } = await insertInChunks('contacts', [...newContacts.values()]);
-    if (error) return res.status(400).json({ error: error.message, ...summary });
+    if (error) return res.status(400).json({ error: dbErrorMessage(error), ...summary });
     created.forEach((c) => contactByKey.set(contactKey(c.name, c.company), c.id));
   }
   const rows = deals.map(({ deal, contactRef }) => ({
@@ -396,7 +405,7 @@ router.post('/import', uploadFile, async (req, res) => {
   const { saved: savedDeals, error: saveError } = await insertInChunks('deals', rows);
   const saved = savedDeals.length;
   if (saveError) {
-    return res.status(400).json({ error: `Stopped after ${saved} deals: ${saveError.message}`, ...summary, imported: saved });
+    return res.status(400).json({ error: `Stopped after ${saved} deals: ${dbErrorMessage(saveError)}`, ...summary, imported: saved });
   }
 
   await recordAudit(req.user, 'deal.import', {

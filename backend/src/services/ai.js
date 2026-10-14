@@ -10,6 +10,9 @@ const OLLAMA_TEXT_MODEL = () => process.env.OLLAMA_TEXT_MODEL || 'qwen2.5:3b';
 const OLLAMA_VISION_MODEL = () => process.env.OLLAMA_VISION_MODEL || 'qwen2.5vl:3b';
 // A small model on a laptop CPU can take a few minutes over a big screenshot
 const OLLAMA_TIMEOUT_MS = () => Number(process.env.OLLAMA_TIMEOUT_SECONDS || 600) * 1000;
+// Loading a model from disk takes a while on a laptop, and Ollama unloads it after 5 idle minutes by
+// default; keep it loaded for longer so re-checks and the next import start straight away
+const OLLAMA_KEEP_ALIVE = () => process.env.OLLAMA_KEEP_ALIVE || '30m';
 
 export const aiProvider = () => process.env.AI_PROVIDER || (process.env.ANTHROPIC_API_KEY ? 'claude' : 'ollama');
 
@@ -93,6 +96,7 @@ async function askOllama({ prompt, image, pdf, schema }) {
       body: JSON.stringify({
         model,
         stream: false,
+        keep_alive: OLLAMA_KEEP_ALIVE(),
         format: schema, // Ollama constrains the output to this JSON schema
         options: { temperature: 0, num_ctx: 8192 },
         messages: [{ role: 'user', content, ...(image ? { images: [image.data] } : {}) }],
@@ -115,6 +119,24 @@ async function askOllama({ prompt, image, pdf, schema }) {
   }
   const data = await res.json();
   return data.message?.content ?? '';
+}
+
+// Starts loading the local model the import will use (vision for pictures, text for everything
+// else) while the user is still choosing the file. Claude needs no warming. Never throws.
+export async function warmUpAi({ image = false } = {}) {
+  if (aiProvider() !== 'ollama') return;
+  const model = image ? OLLAMA_VISION_MODEL() : OLLAMA_TEXT_MODEL();
+  try {
+    // A request with no prompt just loads the model
+    await fetch(`${OLLAMA_URL()}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, keep_alive: OLLAMA_KEEP_ALIVE() }),
+      signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS()),
+    });
+  } catch {
+    // Not running or not installed: the import itself explains that
+  }
 }
 
 // Sends the prompt (plus an image { data: base64, mediaType } or a PDF buffer) and returns the JSON
