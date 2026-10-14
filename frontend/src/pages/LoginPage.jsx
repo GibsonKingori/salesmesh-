@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import NetworkMesh from '../components/NetworkMesh.jsx';
 import Logo, { LogoMark } from '../components/Logo.jsx';
 import { HOME_BY_ROLE } from '../lib/roles.js';
+import api from '../api/client.js';
 
 const FEATURES = [
   { title: 'Prioritised pipeline', text: 'Every open deal scored, so your team knows who to call next.' },
@@ -17,6 +18,44 @@ const SIGNUP_OPTIONS = [
   { value: 'join', label: 'Join a company' },
   { value: 'create', label: 'Start a company' },
 ];
+
+// Same rules as the server: any case, spaces and dashes ignored ("acme-2345" is ACME2345)
+const JOIN_CODE_LENGTH = 8;
+const normalizeJoinCode = (code) => code.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+// Looks the join code up once it's complete, so a wrong code shows before the form is sent.
+// { status: 'idle' | 'checking' | 'found' | 'missing', companyName, error }
+function useJoinCodeCheck(joinCode, enabled) {
+  const [check, setCheck] = useState({ status: 'idle' });
+  const code = normalizeJoinCode(joinCode);
+
+  useEffect(() => {
+    if (!enabled || code.length !== JOIN_CODE_LENGTH) {
+      setCheck({ status: 'idle' });
+      return undefined;
+    }
+    let stale = false;
+    setCheck({ status: 'checking' });
+    // A short pause so pasting or fixing a typo sends one request, not several
+    const timer = setTimeout(() => {
+      api
+        .get(`/auth/join-code/${code}`)
+        .then((res) => !stale && setCheck({ status: 'found', companyName: res.data.company.name }))
+        .catch((err) => {
+          if (stale) return;
+          // Not reachable or rate limited: say so, but leave the final word to Create account
+          const message = err.response?.data?.error;
+          setCheck(err.response?.status === 404 ? { status: 'missing', error: message } : { status: 'idle', error: message });
+        });
+    }, 300);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  }, [code, enabled]);
+
+  return check;
+}
 
 export default function LoginPage() {
   const [mode, setMode] = useState('login'); // 'login' | 'register'
@@ -42,6 +81,8 @@ export default function LoginPage() {
   const navigate = useNavigate();
 
   const isRegister = mode === 'register';
+  const joinCheck = useJoinCodeCheck(joinCode, isRegister && signup === 'join');
+  const joinCodeRejected = isRegister && signup === 'join' && joinCheck.status === 'missing';
 
   const switchMode = (next) => {
     setMode(next);
@@ -246,13 +287,30 @@ export default function LoginPage() {
                         aria-label="Company join code"
                         value={joinCode}
                         onChange={(e) => setJoinCode(e.target.value)}
-                        className={`${inputClass} font-mono uppercase tracking-wider`}
+                        className={`${inputClass} font-mono uppercase tracking-wider ${
+                          joinCodeRejected ? 'border-red-400/60 focus:border-red-400/60 focus:ring-red-500/15' : ''
+                        }`}
                         autoComplete="off"
+                        aria-invalid={joinCodeRejected}
+                        aria-describedby="join-code-status"
                         required
                       />
-                      <p className="mt-1 text-xs text-subtle">
-                        Ask your company’s admin for the code. You’ll join as a Sales Rep; the admin can change your role.
-                      </p>
+                      <div id="join-code-status" aria-live="polite" className="mt-1 text-xs">
+                        {joinCheck.status === 'checking' && <p className="text-subtle">Checking the code…</p>}
+                        {joinCheck.status === 'found' && (
+                          <p className="text-emerald-700 dark:text-emerald-300">
+                            You’re joining <span className="font-semibold">{joinCheck.companyName}</span> as a Sales Rep. The
+                            admin can change your role.
+                          </p>
+                        )}
+                        {joinCheck.status === 'missing' && <p className="text-red-700 dark:text-red-300">{joinCheck.error}</p>}
+                        {joinCheck.status === 'idle' && (
+                          <p className="text-subtle">
+                            {joinCheck.error ||
+                              'Ask your company’s admin for the code. You’ll join as a Sales Rep; the admin can change your role.'}
+                          </p>
+                        )}
+                      </div>
                     </>
                   ) : (
                     <>
@@ -275,7 +333,7 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || joinCodeRejected}
                 className="w-full rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? 'Please wait…' : isRegister ? 'Create account' : 'Log in'}
