@@ -226,6 +226,7 @@ describe('POST /api/deals/import', () => {
 
   test('without Claude, a title row is skipped and the date and amount columns are found from their contents', async () => {
     claude.error = new FakeAnthropic.BadRequestError('Your credit balance is too low to access the Anthropic API.');
+    const quiet = jest.spyOn(console, 'error').mockImplementation(() => {}); // the server logs the credit error; expected here
     const csv = 'MAUZO YA MWEZI\nSiku,Kitu,Mtu,Namba,Pesa\n02/03/2026,Sofa,Grace,0712 345 678,"Ksh 45,000/="\n05 Mar 2026,Table,Otieno,+254722000111,30000\n';
     const res = await upload(manager, csv, { dryRun: 1 });
     expect(res.body.columns).toEqual([
@@ -237,6 +238,7 @@ describe('POST /api/deals/import', () => {
     ]);
     expect(res.body).toMatchObject({ imported: 2, totalValue: 75000 });
     expect(res.body.notes.join(' ')).toMatch(/run out of credit/);
+    quiet.mockRestore();
   });
 
   test('if Claude is unavailable, known headings still work and the user is told to check the columns', async () => {
@@ -305,6 +307,11 @@ describe('importing other file formats', () => {
     expect(res.body.extracted.rows[0].slice(0, 3)).toEqual(['Shop shelving', 'KES 120,000', 'won']);
     expect(res.body.skipped).toEqual([]);
     expect(claude.requests[0].messages[0].content[0]).toMatchObject({ type: 'image', source: { type: 'base64', media_type: 'image/png' } });
+    // ...nor asked for, and fields the picture doesn't show needn't be written out
+    const rowSchema = claude.requests[0].output_config.format.schema.properties.rows.items;
+    expect(rowSchema.properties).not.toHaveProperty('owner');
+    expect(rowSchema.required).toBeUndefined();
+    expect(claude.requests[0].output_config.effort).toBe('low');
     expect(fake.tables.deals).toHaveLength(0);
   });
 
