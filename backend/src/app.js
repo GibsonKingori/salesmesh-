@@ -19,9 +19,15 @@ app.use(cors());
 app.use(express.json());
 
 // mirrorStatus is set by server.js when the local PostgreSQL mirror is enabled
-app.get('/api/health', (req, res) => {
-  const mirrorStatus = req.app.locals.mirrorStatus;
-  res.json({ status: 'ok', service: 'salesmesh-api', postgresMirror: mirrorStatus ? mirrorStatus() : 'disabled' });
+// database.source is "local" while the API is offline; the frontend shows a banner then
+app.get('/api/health', async (req, res) => {
+  const { mirrorStatus, databaseStatus } = req.app.locals;
+  res.json({
+    status: 'ok',
+    service: 'salesmesh-api',
+    database: databaseStatus ? await databaseStatus() : { source: 'supabase' },
+    postgresMirror: mirrorStatus ? mirrorStatus() : 'disabled',
+  });
 });
 
 app.use('/api/auth', authRoutes);

@@ -5,6 +5,14 @@ import App from './App.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import SplashScreen from './components/SplashScreen.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+// Fonts ship with the app (not Google Fonts) so it looks the same without internet
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/inter/700.css';
+import '@fontsource/sora/500.css';
+import '@fontsource/sora/600.css';
+import '@fontsource/sora/700.css';
 import './index.css';
 
 // The splash shows only while the first page's code downloads. With v7_startTransition, later
