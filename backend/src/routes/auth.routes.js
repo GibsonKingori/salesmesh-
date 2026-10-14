@@ -7,7 +7,14 @@ import { mirrorUpsert } from '../config/postgresClient.js';
 import { requireAuth } from '../middleware/auth.js';
 import { recordAudit } from '../services/audit.js';
 import { createResetToken, findUsableReset, RESET_TOKEN_MINUTES } from '../services/passwordReset.js';
-import { createCompany, deleteCompany, findCompany, findCompanyByJoinCode } from '../services/companies.js';
+import {
+  createCompany,
+  deleteCompany,
+  findCompany,
+  findCompanyByJoinCode,
+  JOIN_CODE_LENGTH,
+  normalizeJoinCode,
+} from '../services/companies.js';
 
 const router = express.Router();
 
@@ -83,6 +90,32 @@ const ipLimiter = limiter({
   limit: 10,
   keyGenerator: (req) => ipKeyGenerator(req.ip),
   error: `Too many failed attempts. Please wait ${LOCKOUT_MINUTES} minutes and try again.`,
+});
+
+// Checking a join code while typing it has its own allowance, so a few typos never use up
+// register's. Only codes that match nothing count: 20 per IP per 15 minutes, against
+// 31^8 possible codes.
+const joinCodeLookupLimiter = limiter({
+  limit: 20,
+  keyGenerator: (req) => ipKeyGenerator(req.ip),
+  error: `Too many join codes tried. Please wait ${LOCKOUT_MINUTES} minutes and try again.`,
+});
+
+// GET /api/auth/join-code/:code — the company a join code belongs to, so the register form can
+// show "You're joining Acme" before the account is created. Only the name is shared: anyone
+// holding the code can already join the company.
+router.get('/join-code/:code', joinCodeLookupLimiter, async (req, res) => {
+  const code = normalizeJoinCode(req.params.code);
+  if (code.length !== JOIN_CODE_LENGTH) {
+    return res.status(400).json({ error: `Join codes are ${JOIN_CODE_LENGTH} letters and numbers.` });
+  }
+  try {
+    const company = await findCompanyByJoinCode(code);
+    if (!company) return res.status(404).json({ error: 'That join code doesn’t match any company. Check it with your admin.' });
+    return res.json({ company: { name: company.name } });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 const companyOf = async (companyId) => {
