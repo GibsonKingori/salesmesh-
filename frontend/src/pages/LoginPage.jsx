@@ -5,6 +5,7 @@ import NetworkMesh from '../components/NetworkMesh.jsx';
 import Logo, { LogoMark } from '../components/Logo.jsx';
 import { HOME_BY_ROLE } from '../lib/roles.js';
 import api from '../api/client.js';
+import ThemeToggle from '../components/ThemeToggle.jsx';
 
 const FEATURES = [
   { title: 'Prioritised pipeline', text: 'Every open deal scored, so your team knows who to call next.' },
@@ -161,6 +162,7 @@ export default function LoginPage() {
 
       {/* Form panel */}
       <div className="relative z-10 flex h-full w-full overflow-y-auto px-6 lg:w-1/2">
+        <ThemeToggle className="absolute right-4 top-4" />
         {/* m-auto centres the card when it fits and lets it scroll when it doesn't */}
         <div className="m-auto w-full max-w-sm animate-fade-in-up py-12">
           <div className="rounded-2xl border border-fg/10 bg-surface p-8 shadow-xl shadow-ink-900/10">

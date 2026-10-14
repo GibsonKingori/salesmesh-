@@ -6,6 +6,15 @@
     <meta name="description" content="SalesMesh — sales analytics for Kenyan small and medium businesses." />
     <meta name="theme-color" content="#060c0d" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      // Apply the saved theme before anything draws (context/ThemeContext.jsx keeps it in step after)
+      try {
+        var t = localStorage.getItem('salesmesh_theme') || 'system';
+        var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', dark);
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+      } catch (e) {}
+    </script>
     <title>SalesMesh — Sales analytics for Kenyan SMEs</title>
   </head>
   <body>
