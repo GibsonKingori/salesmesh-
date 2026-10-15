@@ -1,6 +1,7 @@
 import pg from 'pg';
 import dotenv from 'dotenv';
 import { forgetDeals } from '../services/dealCache.js';
+import { dataSource } from './dataSource.js';
 
 dotenv.config();
 
@@ -88,10 +89,11 @@ pool?.on('error', (err) => {
 });
 
 // Fire-and-log wrappers used by the routes after a Supabase write succeeds
-// (they also clear the cached deal lists, so the next read sees the change)
+// (they also clear the cached deal lists, so the next read sees the change).
+// Offline, the write already went to local PostgreSQL, so there is nothing to copy.
 export async function mirrorUpsert(table, rows) {
   forgetDeals(table);
-  if (!pool) return;
+  if (!pool || dataSource.offline) return;
   const list = Array.isArray(rows) ? rows : [rows];
   mirrorState.writes++;
   try {
@@ -104,7 +106,7 @@ export async function mirrorUpsert(table, rows) {
 
 export async function mirrorDelete(table, rows) {
   forgetDeals(table);
-  if (!pool) return;
+  if (!pool || dataSource.offline) return;
   const pk = primaryKeyOf(table);
   const list = (Array.isArray(rows) ? rows : [rows]).filter(Boolean);
   mirrorState.writes++;

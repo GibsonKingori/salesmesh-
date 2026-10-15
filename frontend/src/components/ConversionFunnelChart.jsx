@@ -14,7 +14,8 @@ const TooltipCard = ({ active, payload, label }) => {
 export default function ConversionFunnelChart({ stages, transitions }) {
   return (
     <div>
-      <div className="h-56">
+      {/* Axis labels use currentColor, so they follow the theme's muted text colour */}
+      <div className="h-56 text-muted">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={stages} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
             <defs>
@@ -24,8 +25,8 @@ export default function ConversionFunnelChart({ stages, transitions }) {
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(114,135,135,0.2)" vertical={false} />
-            <XAxis dataKey="stage" tick={{ fill: '#526767', fontSize: 12 }} tickLine={false} axisLine={{ stroke: 'rgba(114,135,135,0.3)' }} />
-            <YAxis tick={{ fill: '#526767', fontSize: 12 }} tickLine={false} axisLine={false} allowDecimals={false} />
+            <XAxis dataKey="stage" tick={{ fill: 'currentColor', fontSize: 12 }} tickLine={false} axisLine={{ stroke: 'rgba(114,135,135,0.3)' }} />
+            <YAxis tick={{ fill: 'currentColor', fontSize: 12 }} tickLine={false} axisLine={false} allowDecimals={false} />
             <Tooltip content={<TooltipCard />} cursor={{ fill: 'rgba(114,135,135,0.08)' }} />
             <Bar dataKey="reached" fill="url(#funnelBar)" radius={[4, 4, 0, 0]} />
           </BarChart>
