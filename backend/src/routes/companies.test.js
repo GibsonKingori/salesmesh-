@@ -71,6 +71,34 @@ beforeEach(() => {
   });
 });
 
+describe('checking a join code before registering', () => {
+  test('a matching code gives only the company name, whatever the case or spacing', async () => {
+    const res = await request(app).get('/api/auth/join-code/acme-2345');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ company: { name: 'Acme' } });
+  });
+
+  test("a code that matches nothing, or is the wrong length, says so", async () => {
+    const missing = await request(app).get('/api/auth/join-code/ZZZZ9999');
+    expect(missing.status).toBe(404);
+    expect(missing.body.error).toMatch(/doesn’t match any company/);
+    expect((await request(app).get('/api/auth/join-code/ACME')).status).toBe(400);
+  });
+
+  test('guessing codes is rate limited, without blocking correct ones first', async () => {
+    for (let i = 0; i < 20; i++) await request(app).get('/api/auth/join-code/ACME2345'); // successes don't count
+    const statuses = [];
+    for (let i = 0; i < 20; i++) statuses.push((await request(app).get(`/api/auth/join-code/GUESS${String(i).padStart(3, '0')}`)).status);
+    // (the test above already spent 2 of the 20 failures)
+    const firstBlocked = statuses.indexOf(429);
+    expect(firstBlocked).toBeGreaterThan(0);
+    expect(statuses.slice(0, firstBlocked).every((s) => s === 404)).toBe(true);
+    const blocked = await request(app).get('/api/auth/join-code/ACME2345');
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error).toMatch(/Too many join codes/);
+  });
+});
+
 describe('companies cannot see each other', () => {
   test("an admin sees every deal in their company and none of another company's", async () => {
     expect(dealIds(await as(acmeAdmin).get('/api/deals'))).toEqual(['deal-m1', 'deal-r1', 'deal-r2', 'deal-r3']);

@@ -1,5 +1,6 @@
 import React from 'react';
 import Navbar from './Navbar.jsx';
+import OfflineBanner from './OfflineBanner.jsx';
 
 export default function DashboardShell({ title, children }) {
   return (
@@ -9,6 +10,7 @@ export default function DashboardShell({ title, children }) {
 
       <div className="relative z-10">
         <Navbar title={title} />
+        <OfflineBanner />
         <main className="mx-auto max-w-6xl animate-fade-in-up px-6 py-8">{children}</main>
       </div>
     </div>

@@ -158,3 +158,14 @@ create index if not exists idx_contacts_company on contacts(company_id);
 create index if not exists idx_campaigns_company on campaigns(company_id);
 create index if not exists idx_deals_company on deals(company_id);
 create index if not exists idx_audit_logs_company on audit_logs(company_id, created_at desc);
+
+-- OFFLINE MODE -----------------------------------------------------------
+-- Local only (never in Supabase). Rows changed while the API was offline, sent to Supabase once
+-- it can be reached again (src/services/offlineSync.js). The API also creates this at startup.
+create table if not exists offline_changes (
+  seq bigserial primary key,
+  table_name text not null,
+  row_id text not null,
+  op text not null check (op in ('upsert', 'delete')),
+  created_at timestamptz not null default now()
+);

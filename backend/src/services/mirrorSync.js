@@ -1,6 +1,7 @@
 // Reconciles local PostgreSQL with Supabase (the source of truth). Shared by the
 // db:sync / db:verify scripts and the API's background self-healing job.
-import { supabase } from '../config/supabaseClient.js';
+// Always the real Supabase, even while the API is offline
+import { remoteSupabase as supabase } from '../config/supabaseClient.js';
 import { pool, PRIMARY_KEYS, upsertRows, deleteRows } from '../config/postgresClient.js';
 
 // Parents before children so foreign keys resolve on insert

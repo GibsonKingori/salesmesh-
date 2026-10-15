@@ -11,7 +11,7 @@ Web-based sales analytics dashboard for Kenyan SMEs. PERN stack (PostgreSQL/Supa
 - Descriptive analytics: KPIs, conversion funnel against targets, win rate, sales cycle, campaign results and CSV report export
 - Bulk import from CSV, Excel/ODS, text, JSON, or a screenshot/PDF read by AI, with a preview before anything is saved
 - Security: JWT auth, role-based middleware, row-level security on every table, login lockout, rate limiting, Helmet, password reset links and a full audit log
-- Optional local PostgreSQL mirror of the Supabase database that keeps itself in sync
+- Works offline: a local PostgreSQL copy of the Supabase database takes over when there's no internet, and offline changes are sent to Supabase when it's back
 
 ## Setup
 
@@ -36,6 +36,14 @@ npm run db:sync     # copy everything from Supabase; remove local rows Supabase 
 npm run db:verify   # row-by-row comparison of both databases
 ```
 The local copy repairs itself while the API is running. It resyncs at startup, within 30s of a failed copy (for example, PostgreSQL was stopped), and every 10 minutes, which also picks up edits made in the Supabase dashboard. Check `GET /api/health` → `postgresMirror` for `inSync` and `lastError`. To change the timing, set `MIRROR_RETRY_SECONDS` and `MIRROR_FULL_SYNC_MINUTES`.
+
+### 2c. Working without internet
+With the local PostgreSQL copy set up (2b), SalesMesh keeps working when the internet is down:
+- At startup, and every 15 seconds after, the API checks whether Supabase can be reached. If it can't, every page reads and saves to the local database instead, and a yellow **Offline mode** banner appears.
+- Everything changed offline is logged (table `offline_changes`). Once Supabase answers again, those changes are sent to it first, and only then is Supabase copied back down, so offline work is never lost. If the same record was changed in both places, the offline version wins.
+- Fonts are bundled with the app, and reading pictures and PDFs works offline with Ollama (`AI_PROVIDER=ollama`). With `AI_PROVIDER=claude`, AI import needs the internet.
+
+Before going offline, run `npm run db:verify` once while connected to check that the local copy is complete. Set `DATA_SOURCE` in `backend/.env` to `local` to always use the local database, or to `supabase` to turn offline mode off (default `auto`). `GET /api/health` → `database` shows which one is in use and how many changes are waiting to be sent.
 
 ### 3. Frontend
 ```bash
@@ -92,5 +100,6 @@ Requests, completed resets and admin-issued links all appear in the audit log.
 ```bash
 cd backend
 npm test        # Jest + Supertest; Supabase, PostgreSQL and the AI providers are mocked
+                # set TEST_DATABASE_URL to any PostgreSQL to also run the offline-mode query tests
 ```
 GitHub Actions runs the backend tests and the frontend build on every push to `main` and on every pull request (`.github/workflows/ci.yml`).
