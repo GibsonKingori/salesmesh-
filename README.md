@@ -1,105 +1,239 @@
 # SalesMesh
 
-Web-based sales analytics dashboard for Kenyan SMEs. PERN stack (PostgreSQL/Supabase, Express, React, Node).
+**Sales analytics for Kenyan small and medium enterprises.**
 
 [![CI](https://github.com/GibsonKingori/salesmesh-/actions/workflows/ci.yml/badge.svg)](https://github.com/GibsonKingori/salesmesh-/actions/workflows/ci.yml)
 
-## Features
-- Three role dashboards from the Chapter 4 use case diagram: Sales Representative, Sales Manager and Administrator
-- Multiple companies with join codes, plus manager teams: a company never sees another's data, and a manager only sees their own reps
-- Deals with a pipeline board, stage changes, close dates and a per-deal activity log; contacts and campaigns
-- Descriptive analytics: KPIs, conversion funnel against targets, win rate, sales cycle, campaign results and CSV report export
-- Bulk import from CSV, Excel/ODS, text, JSON, or a screenshot/PDF read by AI, with a preview before anything is saved
-- Security: JWT auth, role-based middleware, row-level security on every table, login lockout, rate limiting, Helmet, password reset links and a full audit log
-- Works offline: a local PostgreSQL copy of the Supabase database takes over when there's no internet, and offline changes are sent to Supabase when it's back
+SalesMesh is a web-based sales pipeline and analytics platform built for SMEs in Kenya. It gives sales representatives, managers and administrators a shared, role-aware view of deals, contacts and campaigns. It turns a business's existing records (spreadsheets, exports or even photos of a ledger) into clear performance metrics, and it keeps working when the internet connection does not.
 
-## Setup
+---
 
-### 1. Supabase
-1. Create a project at supabase.com.
-2. Go to SQL Editor → paste and run `backend/schema.sql`.
-3. Go to Project Settings → API → copy the Project URL and `service_role` key.
+## Contents
 
-### 2. Backend
+- [Key features](#key-features)
+- [Technology stack](#technology-stack)
+- [Getting started](#getting-started)
+- [Configuration](#configuration)
+- [User roles](#user-roles)
+- [Importing business records](#importing-business-records)
+- [Offline operation](#offline-operation)
+- [Security](#security)
+- [Testing and CI](#testing-and-ci)
+- [Project structure](#project-structure)
+
+---
+
+## Key features
+
+| Area | Capabilities |
+| --- | --- |
+| **Role-based dashboards** | Separate workspaces for Sales Representatives, Sales Managers and Administrators |
+| **Multi-company tenancy** | Each company is fully isolated and joined by invitation code. Managers see only the reps assigned to them |
+| **Pipeline management** | Kanban pipeline board, stage tracking, close dates, and a per-deal activity log. Contacts and campaigns are managed alongside deals |
+| **Analytics** | KPIs, conversion funnel against targets, win rate, sales-cycle length, campaign ROI and revenue forecast, with CSV report export |
+| **Flexible data import** | CSV, Excel/ODS, delimited text, JSON, and AI-assisted reading of screenshots, photos and PDFs, all previewed before saving |
+| **Offline resilience** | A local PostgreSQL mirror takes over when Supabase is unreachable, and changes are synchronised automatically on reconnection |
+| **Security** | JWT authentication, row-level security, account lockout, rate limiting, password-reset links and a full audit trail |
+| **Accessibility** | Light, dark and system themes, with text colours chosen for WCAG AA contrast |
+
+## Technology stack
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | React 18, React Router, Tailwind CSS, Recharts, Vite |
+| Backend | Node.js, Express, Helmet, JSON Web Tokens, bcrypt |
+| Database | Supabase (PostgreSQL) as the primary store, with an optional local PostgreSQL mirror |
+| AI (optional) | Ollama (local, free) or the Claude API, for document reading and column matching |
+| Testing | Jest and Supertest, run on GitHub Actions |
+
+---
+
+## Getting started
+
+### Prerequisites
+
+- **Node.js 22** or later
+- A **Supabase** project ([supabase.com](https://supabase.com))
+- *Optional:* **PostgreSQL** for offline mode, and **Ollama** for free local AI imports
+
+### 1. Set up the database
+
+1. Create a project in Supabase.
+2. Open **SQL Editor**, then paste and run `backend/schema.sql`.
+3. In **Project Settings → API**, copy the Project URL and the `service_role` key.
+
+### 2. Start the API
+
 ```bash
 cd backend
-cp .env.example .env   # fill in SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET
+cp .env.example .env    # add SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and JWT_SECRET
 npm install
 npm run dev             # http://localhost:4000
 ```
 
-### 2b. Local PostgreSQL mirror (optional)
-Supabase is the source of truth. When `DATABASE_URL` is set in `backend/.env`, every write is also copied into a local PostgreSQL database with the same IDs.
-```bash
-npm run db:setup    # create the UTF-8 "salesmesh" database and tables (schema.postgres.sql)
-npm run db:sync     # copy everything from Supabase; remove local rows Supabase no longer has
-npm run db:verify   # row-by-row comparison of both databases
-```
-The local copy repairs itself while the API is running. It resyncs at startup, within 30s of a failed copy (for example, PostgreSQL was stopped), and every 10 minutes, which also picks up edits made in the Supabase dashboard. Check `GET /api/health` → `postgresMirror` for `inSync` and `lastError`. To change the timing, set `MIRROR_RETRY_SECONDS` and `MIRROR_FULL_SYNC_MINUTES`.
+### 3. Start the web app
 
-### 2c. Working without internet
-With the local PostgreSQL copy set up (2b), SalesMesh keeps working when the internet is down:
-- At startup, and every 15 seconds after, the API checks whether Supabase can be reached. If it can't, every page reads and saves to the local database instead, and a yellow **Offline mode** banner appears.
-- Everything changed offline is logged (table `offline_changes`). Once Supabase answers again, those changes are sent to it first, and only then is Supabase copied back down, so offline work is never lost. If the same record was changed in both places, the offline version wins.
-- Fonts are bundled with the app, and reading pictures and PDFs works offline with Ollama (`AI_PROVIDER=ollama`). With `AI_PROVIDER=claude`, AI import needs the internet.
-
-Before going offline, run `npm run db:verify` once while connected to check that the local copy is complete. Set `DATA_SOURCE` in `backend/.env` to `local` to always use the local database, or to `supabase` to turn offline mode off (default `auto`). `GET /api/health` → `database` shows which one is in use and how many changes are waiting to be sent.
-
-### 3. Frontend
 ```bash
 cd frontend
 npm install
-npm run dev              # http://localhost:5173
+npm run dev             # http://localhost:5173 (API requests are proxied to port 4000)
 ```
 
-### 4. Create your first user
-Open http://localhost:5173/login, choose **Register**, and pick **Start a company**.
+### 4. Create your company
 
-On the **Register** tab, choose **Start a company** to create a new company: you become its **Admin**, and the admin overview shows a join code to share with your team. Everyone else chooses **Join a company** and enters that code; they join as **Sales Reps**. The admin then changes roles and assigns each rep to a manager under **Accounts**. Companies never see each other's data, and a manager only sees the reps assigned to them.
+1. Open <http://localhost:5173/login> and select **Register → Start a company**. You become the company's **Administrator**.
+2. Share the **join code** shown on the admin overview with your team. Team members register with **Join a company** and start as Sales Representatives.
+3. Under **Accounts**, assign roles and allocate each representative to a manager.
 
-### Demo data (optional)
-`sample-data/` holds the Maven Analytics CRM sample, converted to Kenyan shillings. To load it into your company:
+### 5. Load demo data (optional)
+
+The `sample-data/` folder contains the Maven Analytics CRM sample dataset, converted to Kenyan shillings.
+
 ```bash
 cd backend
-DEMO_PASSWORD=<a shared password> DEMO_JOIN_CODE=<your join code>   node scripts/seedDemoAccounts.js ../sample-data/maven-sales-teams.csv
+DEMO_PASSWORD=<shared password> DEMO_JOIN_CODE=<your join code> \
+  node scripts/seedDemoAccounts.js ../sample-data/maven-sales-teams.csv
 ```
-This creates the demo managers and reps (e.g. `moses.frase@maventech.demo`), with each rep assigned to their manager. Then sign in as the admin or a manager and import `sample-data/maven-crm-deals-kes.csv` under **Deals → Import deals**.
 
-### Dashboards by role (Chapter 4 use case diagram)
-- **Sales Representative** (`/rep`): own dashboard, deals, contacts, activities and campaign results.
-- **Sales Manager** (`/manager`): team KPIs, pipeline and campaign analytics, deals, contacts, and **Export report** (CSV) on the Overview and Campaigns pages.
-- **Administrator** (`/admin`): system overview with account search, **Accounts** (search, change roles, enable/disable, and open an account to add or delete its deals and campaigns), **System configuration** (conversion targets plus server settings) and the **Audit log** (filter by day, person and area; export to CSV).
+This creates the demo managers and representatives (for example `moses.frase@maventech.demo`), each linked to their manager. Then sign in as an administrator or manager and import `sample-data/maven-crm-deals-kes.csv` through **Deals → Import deals**.
 
-### Importing an SME's records
-Use **Deals → Import deals**. Upload a spreadsheet (Excel `.xlsx`/`.xls`, OpenDocument `.ods`, CSV, or tab/semicolon-separated text), a JSON export, or a **screenshot, photo or PDF** of the records (drag it in, or paste a screenshot with Ctrl+V). Pictures and PDFs are read by AI: free on your own computer with Ollama (`AI_PROVIDER=ollama`, see `backend/.env.example`), or Claude with an API key (`AI_PROVIDER=claude`); the rows it read are shown so you can check them against the picture, and exactly those rows are imported. The app checks the file first and shows what it will do (deals, total value, stages, new contacts, skipped rows and why). Nothing is saved until you confirm. The template is `sample-data/deals-import-template.csv`.
+---
 
-The business doesn't need to change its records to fit SalesMesh:
-- **Any column names, in any order.** Known headings ("Amount", "Customer", "Date sold", ...) are matched directly; anything else (other wording, Swahili, no heading row at all) is matched by AI from the headings and sample rows, along with the business's own status words ("Imelipwa", "Deposit", ...). Without AI, amount, date and phone columns are recognised from their contents. The preview lists every column and what it was read as, and any of them can be changed before importing.
-- **Nothing is strictly required.** A deal with no name is named after its customer, a blank amount is Ksh 0, and rows with no status are imported as the stage you choose in the preview (completed sales by default). One date on a sale is used as both its start and close date. Amounts like `Ksh 45,000/=`, `22k` and dates like `05 Mar 2026` or Excel date numbers are understood.
-- **Rows are only skipped when they can't be used** (an amount that isn't a number, a date in the future, or no deal details at all). A salesperson or campaign that isn't in SalesMesh yet doesn't stop the deal: it's imported without that link, and the preview says so.
+## Configuration
 
-For the most accurate results:
-1. **Set up first:** create every salesperson's account and the campaigns (Campaigns page), so deals are linked to them by name.
-2. **Include dates** where you have them: when the enquiry came in and when the deal was won or lost. Without them the import day is used, which skews the forecast and sales cycle.
-3. **Upload the file as it is,** check the preview (especially the columns list and the status choice), and import.
-4. **Check once:** compare the Overview's won value, deal count and win rate with a spreadsheet total of the same file.
+All server settings live in `backend/.env`. `backend/.env.example` documents every option.
 
-A deal's close date (`closed_at`) is recorded when it moves to won or lost and isn't changed by later edits.
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase connection | *required* |
+| `JWT_SECRET` | Secret used to sign session tokens | *required* |
+| `JWT_EXPIRES_IN` | Session length | `8h` |
+| `DATABASE_URL` | Local PostgreSQL mirror; enables offline mode | *unset* |
+| `DATA_SOURCE` | `auto`, `local` (always local) or `supabase` (never offline) | `auto` |
+| `MIRROR_RETRY_SECONDS` | Delay before retrying a failed mirror write | `30` |
+| `MIRROR_FULL_SYNC_MINUTES` | Interval between full mirror resyncs | `10` |
+| `AI_PROVIDER` | `ollama` or `claude` | `claude` when `ANTHROPIC_API_KEY` is set, otherwise `ollama` |
+| `ANTHROPIC_API_KEY` | Claude API key | *unset* |
+| `OLLAMA_URL`, `OLLAMA_TEXT_MODEL`, `OLLAMA_VISION_MODEL` | Local AI settings | see `.env.example` |
+| `PORT` | API port | `4000` |
+| `NODE_ENV` | `development` or `production` | `development` |
 
+Administrators can review the active server settings under **System configuration**.
 
-A disabled user can't log in, and any session they already have stops working within about 15 seconds. Role changes also apply on the user's next request.
+---
 
-### Forgotten passwords
-**Forgot password?** on the login page asks for an email, then opens a page to choose a new password. Reset links work once and expire after 30 minutes; only a hash of each link is stored. SalesMesh doesn't send email yet, so:
-- outside production (`NODE_ENV` not `production`), the page goes straight to the reset step;
-- in production, an admin opens the account and uses **Create password reset link**, then sends the link to the user.
+## User roles
 
-Requests, completed resets and admin-issued links all appear in the audit log.
+| Role | Route | Responsibilities |
+| --- | --- | --- |
+| **Sales Representative** | `/rep` | Personal dashboard; manage own deals, contacts and activities; view campaign results |
+| **Sales Manager** | `/manager` | Team KPIs, pipeline and campaign analytics, team deals and contacts, CSV report export |
+| **Administrator** | `/admin` | Account management (roles, enable/disable, manager assignment), conversion targets, system configuration and the audit log |
 
-## Tests
+Role changes take effect on the user's next request. A disabled account cannot sign in, and any session it already has ends within about 15 seconds.
+
+---
+
+## Importing business records
+
+Records are imported through **Deals → Import deals**. Supported formats:
+
+- **Spreadsheets:** Excel (`.xlsx`, `.xls`), OpenDocument (`.ods`), CSV, and tab- or semicolon-separated text
+- **Structured data:** JSON exports
+- **Images and documents:** screenshots, photos and PDFs, read by AI. Files can be dragged in, or a screenshot pasted with Ctrl+V
+
+Every import is validated and previewed before anything is saved. The preview shows the number of deals, total value, stage breakdown, new contacts, and any skipped rows with the reason. A template is provided at `sample-data/deals-import-template.csv`.
+
+### Designed for real-world records
+
+Businesses do not need to reformat their data to fit SalesMesh:
+
+- **Any column names, in any order.** Common headings are matched directly. Other wording, Swahili, or files with no header row are matched by AI from the headings and sample rows, including the business's own status terms (for example "Imelipwa" or "Deposit"). Every column mapping can be reviewed and adjusted in the preview.
+- **Minimal required data.** Unnamed deals take the customer's name, blank amounts become Ksh 0, and rows without a status use the stage selected in the preview. Formats such as `Ksh 45,000/=`, `22k`, `05 Mar 2026` and Excel serial dates are recognised.
+- **Rows are skipped only when they cannot be used:** an amount that is not a number, a future date, or a row with no deal details. A salesperson or campaign that does not yet exist does not block the deal; it is imported without that link, and the preview says so.
+
+### Recommended workflow
+
+1. **Set up first.** Create user accounts and campaigns so imported deals link to them by name.
+2. **Include dates** wherever possible. Without them the import date is used, which affects forecasting and sales-cycle metrics.
+3. **Upload the file as-is,** then review the column mapping and status choices in the preview.
+4. **Reconcile once.** Compare the Overview's won value, deal count and win rate against a spreadsheet total of the same file.
+
+A deal's close date is recorded when it moves to won or lost, and later edits do not change it.
+
+---
+
+## Offline operation
+
+Supabase remains the source of truth. When `DATABASE_URL` is set, every write is also copied to a local PostgreSQL database with matching IDs.
+
+```bash
+npm run db:setup    # create the local "salesmesh" database and tables
+npm run db:sync     # copy all data from Supabase
+npm run db:verify   # compare both databases row by row
+```
+
+**Self-healing mirror.** While the API is running, the local copy resyncs at startup, within 30 seconds of a failed write, and every 10 minutes. The 10-minute resync also picks up changes made directly in the Supabase dashboard.
+
+**Automatic failover.** The API checks every 15 seconds whether Supabase can be reached. If it cannot, all reads and writes switch to the local database and an **Offline mode** banner appears in the app.
+
+**Reconciliation.** Offline changes are logged in the `offline_changes` table. When the connection returns, they are sent to Supabase first, and only then is Supabase copied back down, so offline work is never lost. If a record was changed in both places, the offline version is kept.
+
+**Offline AI.** Fonts are bundled with the app, and image and PDF imports work offline with Ollama. The Claude provider requires an internet connection.
+
+Run `npm run db:verify` while connected before relying on offline mode. `GET /api/health` reports the active database, the mirror's sync status and the number of changes waiting to be sent.
+
+---
+
+## Security
+
+- **Authentication:** bcrypt password hashing and signed JWT sessions
+- **Authorisation:** role-based middleware on every route, plus row-level security on every table
+- **Tenant isolation:** each company's data is isolated, and managers see only their assigned representatives
+- **Abuse protection:** per-account login lockout, rate limiting and Helmet security headers
+- **Password resets:** single-use links that expire after 30 minutes; only a hash of each link is stored
+- **Auditing:** sign-ins, account changes, data changes and password resets are all recorded in a searchable, exportable audit log
+
+### Password recovery
+
+Users request a reset through **Forgot password?** on the login page. SalesMesh does not send email yet, so:
+
+- **In development** (`NODE_ENV` is not `production`), the user goes straight to the reset step.
+- **In production**, an administrator opens the account, selects **Create password reset link**, and sends the link to the user.
+
+---
+
+## Testing and CI
+
 ```bash
 cd backend
-npm test        # Jest + Supertest; Supabase, PostgreSQL and the AI providers are mocked
-                # set TEST_DATABASE_URL to any PostgreSQL to also run the offline-mode query tests
+npm test
 ```
-GitHub Actions runs the backend tests and the frontend build on every push to `main` and on every pull request (`.github/workflows/ci.yml`).
+
+The backend suite uses Jest and Supertest, with Supabase, PostgreSQL and the AI providers mocked. Set `TEST_DATABASE_URL` to any PostgreSQL instance to also run the offline-mode query tests.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the backend tests and the frontend production build on every push to `main` and on every pull request.
+
+---
+
+## Project structure
+
+```
+salesmesh/
+├── backend/
+│   ├── schema.sql              # Supabase schema
+│   ├── schema.postgres.sql     # Local mirror schema
+│   ├── scripts/                # Database sync and demo-data seeding
+│   └── src/
+│       ├── config/             # Supabase, PostgreSQL and data-source selection
+│       ├── middleware/         # Authentication and role checks
+│       ├── routes/             # REST API endpoints
+│       └── services/           # Analytics, import, AI, sync and audit logic
+├── frontend/
+│   └── src/
+│       ├── api/                # HTTP client
+│       ├── components/         # Shared UI components
+│       ├── context/            # Authentication and theme state
+│       └── pages/              # Role-specific pages
+└── sample-data/                # Demo dataset and import template
+```
