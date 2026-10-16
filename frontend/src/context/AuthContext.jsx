@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
 import api from '../api/client.js';
+import { markActive } from '../lib/idle.js';
 
 const AuthContext = createContext(null);
 
@@ -13,6 +14,7 @@ export function AuthProvider({ children }) {
     const { data } = await api.post('/auth/login', { email, password });
     localStorage.setItem('salesmesh_token', data.token);
     localStorage.setItem('salesmesh_user', JSON.stringify(data.user));
+    markActive(); // a fresh login starts a fresh inactivity timer (components/IdleLogout.jsx)
     setUser(data.user);
     return data.user;
   };
