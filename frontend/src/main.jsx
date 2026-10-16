@@ -6,6 +6,7 @@ import { AuthProvider } from './context/AuthContext.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
 import SplashScreen from './components/SplashScreen.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
+import IdleLogout from './components/IdleLogout.jsx';
 // Fonts ship with the app (not Google Fonts) so it looks the same without internet
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
@@ -22,6 +23,7 @@ function Root() {
   return (
     <BrowserRouter future={{ v7_startTransition: true }}>
       <AuthProvider>
+        <IdleLogout />
         <PageErrorBoundary>
           <Suspense fallback={<SplashScreen />}>
             <div className="animate-fade-in">

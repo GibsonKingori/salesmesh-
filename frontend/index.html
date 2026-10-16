@@ -12,7 +12,7 @@
         var t = localStorage.getItem('salesmesh_theme') || 'system';
         var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
         document.documentElement.classList.toggle('dark', dark);
-        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'only light';
       } catch (e) {}
     </script>
     <title>SalesMesh — Sales analytics for Kenyan SMEs</title>
