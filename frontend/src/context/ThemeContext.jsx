@@ -17,10 +17,12 @@ function readSaved() {
 }
 
 // The whole app turns dark through the "dark" class on <html> (tailwind.config.js, index.css)
+// "only light" stops the browser's own forced dark mode (Chrome/Edge flag, Opera, Samsung Internet)
+// repainting the page dark after the user has picked Light
 function apply(theme) {
   const dark = theme === 'dark' || (theme === 'system' && Boolean(darkQuery()?.matches));
   document.documentElement.classList.toggle('dark', dark);
-  document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+  document.documentElement.style.colorScheme = dark ? 'dark' : 'only light';
 }
 
 const ThemeContext = createContext({ theme: 'system', setTheme: () => {} });
