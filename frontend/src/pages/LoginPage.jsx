@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import NetworkMesh from '../components/NetworkMesh.jsx';
 import Logo, { LogoMark } from '../components/Logo.jsx';
 import { HOME_BY_ROLE } from '../lib/roles.js';
+import { IDLE_MINUTES } from '../lib/idle.js';
 import api from '../api/client.js';
 import ThemeToggle from '../components/ThemeToggle.jsx';
 
@@ -66,11 +67,12 @@ export default function LoginPage() {
   const [signup, setSignup] = useState('join'); // 'join' | 'create'
   const [joinCode, setJoinCode] = useState('');
   const [companyName, setCompanyName] = useState('');
-  // api/client.js sends users here with ?expired=1 or ?disabled=1; the reset page with ?reset=1
+  // api/client.js sends users here with ?expired=1 or ?disabled=1, IdleLogout with ?idle=1, the reset page with ?reset=1
   const [error, setError] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.has('disabled')) return 'Your account has been disabled. Contact your administrator.';
     if (params.has('expired')) return 'Your session expired. Please log in again.';
+    if (params.has('idle')) return `You were logged out after ${IDLE_MINUTES} minutes of inactivity. Please log in again.`;
     return '';
   });
   const [notice, setNotice] = useState(() =>
