@@ -198,3 +198,25 @@ alter table funnel_benchmarks alter column company_id set not null;
 
 alter table companies enable row level security;
 revoke all on companies from anon, authenticated;
+
+-- IMPORTS ---------------------------------------------------------------
+-- One row per file imported on the Deals page. The deals and contacts it created point back
+-- at it, so a whole import can be deleted again (DELETE /api/deals/imports/:id).
+create table if not exists imports (
+  id uuid primary key default uuid_generate_v4(),
+  company_id uuid not null references companies(id) on delete cascade,
+  user_id uuid references users(id) on delete set null,
+  file_name text,
+  deal_count integer not null default 0,
+  contact_count integer not null default 0,
+  total_value numeric(14,2) not null default 0,
+  created_at timestamptz not null default now()
+);
+alter table deals add column if not exists import_id uuid references imports(id) on delete set null;
+alter table contacts add column if not exists import_id uuid references imports(id) on delete set null;
+create index if not exists idx_imports_company on imports(company_id, created_at desc);
+create index if not exists idx_deals_import on deals(import_id);
+create index if not exists idx_contacts_import on contacts(import_id);
+
+alter table imports enable row level security;
+revoke all on imports from anon, authenticated;

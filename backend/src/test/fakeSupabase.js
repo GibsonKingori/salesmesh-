@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 export const MAX_ROWS = 1000;
 
 // Tables whose rows belong to a company (see services/access.js)
-const COMPANY_TABLES = ['users', 'contacts', 'campaigns', 'deals', 'funnel_benchmarks', 'audit_logs'];
+const COMPANY_TABLES = ['users', 'imports', 'contacts', 'campaigns', 'deals', 'funnel_benchmarks', 'audit_logs'];
 
 // options.companyId puts every seeded row that doesn't name a company into that one
 export function createFakeSupabase(seed = {}, { companyId } = {}) {
