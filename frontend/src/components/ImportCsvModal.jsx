@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { currency } from '../lib/format.js';
 import { downloadCsv, toCsv } from '../lib/csv.js';
 import Modal from './Modal.jsx';
+import DeleteImportWarning from './DeleteImportWarning.jsx';
 
 // Template matching services/dealImport.js. Dates are day-first, as Kenyan records usually are.
 const TEMPLATE_HEADER = [
@@ -199,6 +200,8 @@ export default function ImportCsvModal({ onClose, onImported }) {
   const [error, setError] = useState('');
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
+  const [undone, setUndone] = useState(null);
+  const [confirmUndo, setConfirmUndo] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const [dragging, setDragging] = useState(false);
@@ -235,6 +238,7 @@ export default function ImportCsvModal({ onClose, onImported }) {
       ? new File([toCsv(preview.extracted.headers, preview.extracted.rows)], 'read-from-image.csv', { type: 'text/csv' })
       : file;
     formData.append('file', upload);
+    if (file?.name) formData.append('fileName', file.name);
     if (mapping) formData.append('mapping', JSON.stringify(mapping));
     if (defaultStage) formData.append('defaultStage', defaultStage);
     return (await api.post(`/deals/import${dryRun ? '?dryRun=1' : ''}`, formData)).data;
@@ -297,10 +301,23 @@ export default function ImportCsvModal({ onClose, onImported }) {
     }
   };
 
+  // Deletes what this import just saved (the same as deleting it under "Past imports")
+  const undoImport = async () => {
+    setError('');
+    try {
+      setUndone((await api.delete(`/deals/imports/${result.importId}`)).data);
+      onImported();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not undo the import');
+    }
+  };
+
   const reset = () => {
     setFile(null);
     setPreview(null);
     setResult(null);
+    setUndone(null);
+    setConfirmUndo(false);
     setError('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -325,10 +342,38 @@ export default function ImportCsvModal({ onClose, onImported }) {
 
       {result ? (
         <div className="space-y-4">
-          <div className="rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-800 dark:text-emerald-200">
-            Imported {result.imported} deal{result.imported === 1 ? '' : 's'} worth {currency(result.totalValue)}
-            {result.newContacts ? `, and added ${result.newContacts} new contact${result.newContacts === 1 ? '' : 's'}` : ''}.
-          </div>
+          {undone ? (
+            <div className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-2.5 text-sm text-fg-soft">
+              Import undone: {undone.deletedDeals} deal{undone.deletedDeals === 1 ? '' : 's'}
+              {undone.deletedContacts ? ` and ${undone.deletedContacts} contact${undone.deletedContacts === 1 ? '' : 's'}` : ''} deleted.
+            </div>
+          ) : (
+            <div className="flex items-start justify-between gap-3 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-800 dark:text-emerald-200">
+              <span>
+                Imported {result.imported} deal{result.imported === 1 ? '' : 's'} worth {currency(result.totalValue)}
+                {result.newContacts ? `, and added ${result.newContacts} new contact${result.newContacts === 1 ? '' : 's'}` : ''}.
+              </span>
+              {result.importId && !confirmUndo && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmUndo(true)}
+                  className="whitespace-nowrap rounded-lg border border-red-400/30 px-2.5 py-1 text-xs font-medium text-red-700 transition-colors hover:bg-red-500/10 dark:text-red-300"
+                >
+                  Undo import
+                </button>
+              )}
+            </div>
+          )}
+          {confirmUndo && !undone && (
+            <DeleteImportWarning
+              fileName={file?.name}
+              deals={result.imported}
+              contacts={result.newContacts}
+              value={result.totalValue}
+              onConfirm={undoImport}
+              onCancel={() => setConfirmUndo(false)}
+            />
+          )}
           <SkippedList skipped={result.skipped} />
           <div className="grid grid-cols-2 gap-2">
             <button onClick={reset} className={secondaryClass}>

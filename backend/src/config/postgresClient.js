@@ -32,6 +32,7 @@ export const pool = connectionString
 export const PRIMARY_KEYS = {
   companies: 'id',
   users: 'id',
+  imports: 'id',
   contacts: 'id',
   campaigns: 'id',
   deals: 'id',
