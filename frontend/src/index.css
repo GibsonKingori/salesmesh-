@@ -76,3 +76,23 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Slim, theme-coloured scrollbar for panels that scroll inside the page (the pipeline board) */
+.thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--fg) / 0.25) transparent;
+}
+.thin-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: rgb(var(--fg) / 0.25);
+}
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--fg) / 0.4);
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
