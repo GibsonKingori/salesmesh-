@@ -5,7 +5,7 @@ import StageSelect from '../components/StageSelect.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import AddDealModal from '../components/AddDealModal.jsx';
 import ImportCsvModal from '../components/ImportCsvModal.jsx';
-import ImportHistoryModal from '../components/ImportHistoryModal.jsx';
+import ImportHistoryModal, { importLabel } from '../components/ImportHistoryModal.jsx';
 import DealDrawer from '../components/DealDrawer.jsx';
 import PipelineBoard from '../components/PipelineBoard.jsx';
 import { currency, formatDate } from '../lib/format.js';
@@ -37,7 +37,7 @@ const TABS = [
 ];
 
 const PAGE_SIZE = 25;
-const NO_FILTERS = { q: '', owner_id: '', campaign_id: '' };
+const NO_FILTERS = { q: '', owner_id: '', campaign_id: '', import_id: '' };
 const EMPTY_LIST = { deals: [], total: 0, pages: 1 };
 
 const selectClass =
@@ -85,6 +85,8 @@ export default function DealsPage({ scope }) {
   const [showAddDeal, setShowAddDeal] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showImportHistory, setShowImportHistory] = useState(false);
+  // The import whose deals are shown ("View deals" under Past imports), for the banner
+  const [viewedImport, setViewedImport] = useState(null);
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [view, setView] = useState(readView);
 
@@ -184,6 +186,13 @@ export default function DealsPage({ scope }) {
   const clearFilters = () => {
     setSearch('');
     setFilters(NO_FILTERS);
+    setViewedImport(null);
+  };
+  const viewImport = (imp) => {
+    setShowImportHistory(false);
+    setViewedImport(imp);
+    setSearch('');
+    setFilters({ ...NO_FILTERS, import_id: imp.id });
   };
 
   const loadMoreButton = (kind) =>
@@ -328,6 +337,23 @@ export default function DealsPage({ scope }) {
             </button>
           )}
         </div>
+
+        {filters.import_id && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-fg/10 bg-brand-500/[0.06] px-5 py-2.5 text-sm">
+            <span className="text-fg-soft">
+              Showing only deals from <span className="font-medium text-fg">{viewedImport ? importLabel(viewedImport) : 'one import'}</span>
+              {viewedImport && ` (${viewedImport.deal_count.toLocaleString('en-KE')} deals: check the Open and Closed tabs)`}
+            </span>
+            <span className="flex gap-3">
+              <button onClick={() => setShowImportHistory(true)} className="font-medium text-brand-700 hover:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200">
+                Back to Past imports
+              </button>
+              <button onClick={clearFilters} className="text-muted hover:text-fg">
+                Show all deals
+              </button>
+            </span>
+          </div>
+        )}
 
         {error && (
           <div className="mx-5 mt-4 flex items-center justify-between rounded-md border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
@@ -480,7 +506,17 @@ export default function DealsPage({ scope }) {
         />
       )}
 
-      {showImportHistory && <ImportHistoryModal onClose={() => setShowImportHistory(false)} onDeleted={() => fetchAll()} />}
+      {showImportHistory && (
+        <ImportHistoryModal
+          onClose={() => setShowImportHistory(false)}
+          onView={viewImport}
+          onDeleted={() => {
+            // The deals being viewed may be the ones just deleted
+            if (filters.import_id) clearFilters();
+            else fetchAll();
+          }}
+        />
+      )}
     </DashboardShell>
   );
 }

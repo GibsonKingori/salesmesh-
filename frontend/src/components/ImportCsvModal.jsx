@@ -201,6 +201,8 @@ export default function ImportCsvModal({ onClose, onImported }) {
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
   const [undone, setUndone] = useState(null);
+  // Shown under Deals -> Past imports; starts as the file's name and the user can change it
+  const [importName, setImportName] = useState('');
   const [confirmUndo, setConfirmUndo] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -209,6 +211,7 @@ export default function ImportCsvModal({ onClose, onImported }) {
   const pickFile = (f) => {
     if (!f) return;
     setFile(f);
+    setImportName(f.name);
     setError('');
     // Pictures are read by the vision model; anything else may need the text model to match columns.
     // Starting it now means it is (mostly) loaded by the time "Check file" is pressed.
@@ -238,7 +241,8 @@ export default function ImportCsvModal({ onClose, onImported }) {
       ? new File([toCsv(preview.extracted.headers, preview.extracted.rows)], 'read-from-image.csv', { type: 'text/csv' })
       : file;
     formData.append('file', upload);
-    if (file?.name) formData.append('fileName', file.name);
+    const name = importName.trim() || file?.name;
+    if (name) formData.append('fileName', name);
     if (mapping) formData.append('mapping', JSON.stringify(mapping));
     if (defaultStage) formData.append('defaultStage', defaultStage);
     return (await api.post(`/deals/import${dryRun ? '?dryRun=1' : ''}`, formData)).data;
@@ -317,6 +321,7 @@ export default function ImportCsvModal({ onClose, onImported }) {
     setPreview(null);
     setResult(null);
     setUndone(null);
+    setImportName('');
     setConfirmUndo(false);
     setError('');
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -350,7 +355,7 @@ export default function ImportCsvModal({ onClose, onImported }) {
           ) : (
             <div className="flex items-start justify-between gap-3 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-800 dark:text-emerald-200">
               <span>
-                Imported {result.imported} deal{result.imported === 1 ? '' : 's'} worth {currency(result.totalValue)}
+                Imported {result.imported} deal{result.imported === 1 ? '' : 's'} worth {currency(result.totalValue)} as “{importName.trim() || file?.name}”
                 {result.newContacts ? `, and added ${result.newContacts} new contact${result.newContacts === 1 ? '' : 's'}` : ''}.
               </span>
               {result.importId && !confirmUndo && (
@@ -366,7 +371,7 @@ export default function ImportCsvModal({ onClose, onImported }) {
           )}
           {confirmUndo && !undone && (
             <DeleteImportWarning
-              fileName={file?.name}
+              fileName={importName.trim() || file?.name}
               deals={result.imported}
               contacts={result.newContacts}
               value={result.totalValue}
@@ -390,6 +395,19 @@ export default function ImportCsvModal({ onClose, onImported }) {
             Checked <span className="font-medium text-fg">{file?.name}</span>
             {preview.sheet ? ` (sheet “${preview.sheet}”)` : ''}. Nothing has been saved yet.
           </p>
+          <label className="block">
+            <span className="text-xs font-medium text-muted">Name this import</span>
+            <input
+              value={importName}
+              onChange={(e) => setImportName(e.target.value)}
+              maxLength={200}
+              placeholder={file?.name}
+              className="mt-1 w-full rounded-lg border border-fg/10 bg-fg/5 px-3 py-1.5 text-sm text-fg outline-none transition-all placeholder-faint focus:border-brand-400/60 focus:ring-2 focus:ring-brand-500/20"
+            />
+            <span className="mt-1 block text-xs text-subtle">
+              How it's listed under Past imports, so you can find it to undo it later. Left empty, the file name is used.
+            </span>
+          </label>
           {preview.extracted && (
             <div className="space-y-2">
               <p className="text-xs text-muted">
