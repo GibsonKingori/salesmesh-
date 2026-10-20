@@ -404,6 +404,11 @@ describe('deleting an import', () => {
     expect((await listImports(rep)).body.imports).toEqual([]);
   });
 
+  test('the name typed in the import window is used instead of the file name', async () => {
+    const res = await upload(rep, 'title,value,stage\nA,100,lead\n', {}, 'export (3).csv', { fileName: '  March shop sales  ' });
+    expect(fake.tables.imports.find((i) => i.id === res.body.importId).file_name).toBe('March shop sales');
+  });
+
   test('removes its deals and the contacts it added, but keeps contacts other deals use', async () => {
     fake.tables.deals.push({ id: 'manual', company_id: 'co-1', title: 'Manual', value: 1, stage: 'lead', owner_id: rep.id });
     const first = await upload(rep, 'title,value,stage,customer\nA,100,lead,Wanjiru\nB,200,lead,Otieno\n');
@@ -427,6 +432,37 @@ describe('deleting an import', () => {
     fake.tables.users.push({ id: 'other-admin', name: 'Other', email: 'o@x.com', role: 'admin', password_hash: 'x', is_active: true, company_id: 'co-2' });
     expect((await del({ id: 'other-admin', email: 'o@x.com', role: 'admin' }, res.body.importId)).status).toBe(404);
     expect(fake.tables.deals).toHaveLength(1);
+  });
+
+  test('the list shows what is inside each import, so unnamed ones can be told apart', async () => {
+    const res = await upload(rep, 'title,value,stage,created_date\nA,100,lead,05/03/2026\nB,200,won,01/03/2026\nC,300,lost,10/03/2026\nD,1,lead,07/03/2026\n');
+    const imp = (await listImports(rep)).body.imports[0];
+    expect(imp).toMatchObject({
+      id: res.body.importId,
+      sample_titles: ['B', 'A', 'D'],
+      first_deal_at: '2026-03-01T09:00:00.000Z',
+      last_deal_at: '2026-03-10T09:00:00.000Z',
+      stages: { open: 2, won: 1, lost: 1 },
+    });
+
+    // ...and the deals list can be narrowed to one import
+    fake.tables.deals.push({ id: 'manual', company_id: 'co-1', title: 'Manual', value: 1, stage: 'lead', owner_id: rep.id });
+    const deals = await request(app).get('/api/deals').query({ import_id: res.body.importId }).set('Authorization', tokenFor(rep));
+    expect(deals.body.deals.map((d) => d.title).sort()).toEqual(['A', 'B', 'C', 'D']);
+  });
+
+  test('an import can be renamed by whoever may see it', async () => {
+    const res = await upload(rep, 'title,value,stage\nA,100,lead\n');
+    const rename = (user, body) => request(app).patch(`/api/deals/imports/${res.body.importId}`).set('Authorization', tokenFor(user)).send(body);
+
+    expect((await rename(rep, { name: '  ' })).status).toBe(400);
+    const out = await rename(manager, { name: 'Maven CRM test data' });
+    expect(out.status).toBe(200);
+    expect(fake.tables.imports[0].file_name).toBe('Maven CRM test data');
+    expect(fake.tables.audit_logs.find((e) => e.action === 'deal.import_rename').details).toMatchObject({ to: 'Maven CRM test data' });
+
+    const other = await upload(manager, 'title,value,stage\nB,100,lead\n');
+    expect((await request(app).patch(`/api/deals/imports/${other.body.importId}`).set('Authorization', tokenFor(rep)).send({ name: 'x' })).status).toBe(404);
   });
 
   test('a manager deletes a rep import; deals since moved out of the team are kept', async () => {

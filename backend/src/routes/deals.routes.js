@@ -392,9 +392,9 @@ router.post('/import', uploadFile, async (req, res) => {
   }
 
   // The import itself is saved first, and every deal and contact it creates points at it, so the
-  // whole file can be deleted again from the Deals page. A picture is sent back as a CSV, so the
-  // browser passes the name of the file the user chose.
-  const fileName = String(req.body?.fileName || req.file.originalname || '').slice(0, 200) || null;
+  // whole file can be deleted again from the Deals page. The browser passes the name the user gave
+  // it (by default the chosen file's name; a picture is sent back as a CSV with another name).
+  const fileName = (String(req.body?.fileName ?? '').trim() || req.file.originalname || '').slice(0, 200) || null;
   const { data: importRow, error: importError } = await supabase
     .from('imports')
     .insert([{ company_id: req.user.company_id, user_id: req.user.id, file_name: fileName }])
@@ -454,19 +454,65 @@ router.post('/import', uploadFile, async (req, res) => {
 const scopedImports = (query, user) => scopeOwned(query, user, 'user_id');
 const ID_CHUNK = 200; // ids per .in() filter, so the request URL stays short
 
-// GET /api/deals/imports — every import, newest first, with who imported each
-router.get('/imports', async (req, res) => {
-  const { data, error } = await fetchAll(() =>
-    scopedImports(supabase.from('imports').select('*'), req.user).order('created_at', { ascending: false }).order('id')
+// What an import's deals look like, so the user can tell imports apart (older ones have no file
+// name): a few example titles, the span of the deals' dates, and how many are open, won and lost
+function describeImports(deals) {
+  const byImport = new Map();
+  deals.forEach((d) => {
+    if (!d.import_id) return;
+    if (!byImport.has(d.import_id)) byImport.set(d.import_id, []);
+    byImport.get(d.import_id).push(d);
+  });
+  return new Map(
+    [...byImport].map(([id, list]) => {
+      const sorted = [...list].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || (a.id < b.id ? -1 : 1));
+      const stages = { open: 0, won: 0, lost: 0 };
+      list.forEach((d) => (CLOSED_STAGES.includes(d.stage) ? stages[d.stage]++ : stages.open++));
+      return [id, {
+        sample_titles: [...new Set(sorted.map((d) => d.title))].slice(0, 3),
+        first_deal_at: sorted[0].created_at,
+        last_deal_at: sorted[sorted.length - 1].created_at,
+        stages,
+      }];
+    })
   );
+}
+
+// GET /api/deals/imports — every import, newest first, with who imported each and what is in it
+router.get('/imports', async (req, res) => {
+  const [{ data, error }, dealsRes] = await Promise.all([
+    fetchAll(() => scopedImports(supabase.from('imports').select('*'), req.user).order('created_at', { ascending: false }).order('id')),
+    visibleDeals(req.user),
+  ]);
   if (error) return res.status(400).json({ error: dbErrorMessage(error) });
+  if (dealsRes.error) return res.status(400).json({ error: dbErrorMessage(dealsRes.error) });
+  const contents = describeImports(dealsRes.data);
 
   const userIds = [...new Set(data.map((i) => i.user_id).filter(Boolean))];
   const { data: users } = userIds.length
     ? await scopeCompany(supabase.from('users').select('id, name'), req.user).in('id', userIds)
     : { data: [] };
   const names = new Map((users ?? []).map((u) => [u.id, u.name]));
-  return res.json({ imports: data.map((i) => ({ ...i, user_name: names.get(i.user_id) ?? null })) });
+  const empty = { sample_titles: [], first_deal_at: null, last_deal_at: null, stages: { open: 0, won: 0, lost: 0 } };
+  return res.json({ imports: data.map((i) => ({ ...i, user_name: names.get(i.user_id) ?? null, ...(contents.get(i.id) ?? empty) })) });
+});
+
+// PATCH /api/deals/imports/:id — rename an import (body: { name }), e.g. to label one saved before
+// file names were recorded. The name is kept in file_name, which the list shows.
+router.patch('/imports/:id', async (req, res) => {
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  if (name.length > 200) return res.status(400).json({ error: 'name must be 200 characters or fewer' });
+
+  const { data: imp, error: fetchError } = await supabase.from('imports').select('*').eq('id', req.params.id).maybeSingle();
+  if (fetchError) return res.status(400).json({ error: dbErrorMessage(fetchError) });
+  if (!canAccessOwned(req.user, imp, 'user_id')) return res.status(404).json({ error: 'Import not found' });
+
+  const { data, error } = await supabase.from('imports').update({ file_name: name }).eq('id', imp.id).select().single();
+  if (error) return res.status(400).json({ error: dbErrorMessage(error) });
+  await mirrorUpsert('imports', data);
+  await recordAudit(req.user, 'deal.import_rename', { entity: 'import', entityId: imp.id, details: { from: imp.file_name, to: name } });
+  return res.json({ import: data });
 });
 
 // DELETE /api/deals/imports/:id — removes the deals an import created (their activities go with
