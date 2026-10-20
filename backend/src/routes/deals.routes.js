@@ -391,28 +391,143 @@ router.post('/import', uploadFile, async (req, res) => {
     return res.json({ dryRun: true, ...summary, preview: deals.slice(0, 5).map((d) => d.deal) });
   }
 
+  // The import itself is saved first, and every deal and contact it creates points at it, so the
+  // whole file can be deleted again from the Deals page. A picture is sent back as a CSV, so the
+  // browser passes the name of the file the user chose.
+  const fileName = String(req.body?.fileName || req.file.originalname || '').slice(0, 200) || null;
+  const { data: importRow, error: importError } = await supabase
+    .from('imports')
+    .insert([{ company_id: req.user.company_id, user_id: req.user.id, file_name: fileName }])
+    .select()
+    .single();
+  if (importError) return res.status(400).json({ error: dbErrorMessage(importError), ...summary });
+  await mirrorUpsert('imports', importRow);
+
+  // Records what was actually saved; an import that saved nothing is removed again
+  const finishImport = async (savedDeals, contactCount) => {
+    if (!savedDeals.length && !contactCount) {
+      const { data: gone } = await supabase.from('imports').delete().eq('id', importRow.id).select('id');
+      await mirrorDelete('imports', gone);
+      return;
+    }
+    const { data } = await supabase
+      .from('imports')
+      .update({ deal_count: savedDeals.length, contact_count: contactCount, total_value: savedDeals.reduce((s, d) => s + Number(d.value), 0) })
+      .eq('id', importRow.id)
+      .select();
+    await mirrorUpsert('imports', data);
+  };
+
   // Save: new contacts first so deals can point at them, then deals in chunks
+  let contactCount = 0;
   if (newContacts.size) {
-    const { saved: created, error } = await insertInChunks('contacts', [...newContacts.values()]);
-    if (error) return res.status(400).json({ error: dbErrorMessage(error), ...summary });
+    const { saved: created, error } = await insertInChunks('contacts', [...newContacts.values()].map((c) => ({ ...c, import_id: importRow.id })));
+    contactCount = created.length;
+    if (error) {
+      await finishImport([], contactCount);
+      return res.status(400).json({ error: dbErrorMessage(error), ...summary });
+    }
     created.forEach((c) => contactByKey.set(contactKey(c.name, c.company), c.id));
   }
   const rows = deals.map(({ deal, contactRef }) => ({
     ...deal,
+    import_id: importRow.id,
     contact_id: contactRef ? contactRef.id ?? contactByKey.get(contactRef.key) ?? null : null,
   }));
 
   const { saved: savedDeals, error: saveError } = await insertInChunks('deals', rows);
   const saved = savedDeals.length;
+  await finishImport(savedDeals, contactCount);
   if (saveError) {
-    return res.status(400).json({ error: `Stopped after ${saved} deals: ${dbErrorMessage(saveError)}`, ...summary, imported: saved });
+    return res.status(400).json({ error: `Stopped after ${saved} deals: ${dbErrorMessage(saveError)}`, ...summary, imported: saved, importId: importRow.id });
   }
 
   await recordAudit(req.user, 'deal.import', {
-    entity: 'deal',
-    details: { imported: saved, skipped: skipped.length, newContacts: newContacts.size, totalValue: summary.totalValue },
+    entity: 'import',
+    entityId: importRow.id,
+    details: { imported: saved, skipped: skipped.length, newContacts: newContacts.size, totalValue: summary.totalValue, fileName },
   });
-  return res.status(201).json({ ...summary, imported: saved });
+  return res.status(201).json({ ...summary, imported: saved, importId: importRow.id });
+});
+
+// Imports the user may see, like deals: their own, their team's (manager), or the company's (admin)
+const scopedImports = (query, user) => scopeOwned(query, user, 'user_id');
+const ID_CHUNK = 200; // ids per .in() filter, so the request URL stays short
+
+// GET /api/deals/imports — every import, newest first, with who imported each
+router.get('/imports', async (req, res) => {
+  const { data, error } = await fetchAll(() =>
+    scopedImports(supabase.from('imports').select('*'), req.user).order('created_at', { ascending: false }).order('id')
+  );
+  if (error) return res.status(400).json({ error: dbErrorMessage(error) });
+
+  const userIds = [...new Set(data.map((i) => i.user_id).filter(Boolean))];
+  const { data: users } = userIds.length
+    ? await scopeCompany(supabase.from('users').select('id, name'), req.user).in('id', userIds)
+    : { data: [] };
+  const names = new Map((users ?? []).map((u) => [u.id, u.name]));
+  return res.json({ imports: data.map((i) => ({ ...i, user_name: names.get(i.user_id) ?? null })) });
+});
+
+// DELETE /api/deals/imports/:id — removes the deals an import created (their activities go with
+// them) and the contacts it created that no remaining deal uses. Only deals the user may still
+// see are removed: if some were since given to someone outside a manager's team, the import stays
+// listed with those deals until an admin deletes it.
+router.delete('/imports/:id', async (req, res) => {
+  const { id } = req.params;
+  const { data: imp, error: fetchError } = await supabase.from('imports').select('*').eq('id', id).maybeSingle();
+  if (fetchError) return res.status(400).json({ error: dbErrorMessage(fetchError) });
+  if (!canAccessOwned(req.user, imp, 'user_id')) return res.status(404).json({ error: 'Import not found' });
+
+  const { data: deletedDeals, error: dealsError } = await scopeOwned(supabase.from('deals').delete().eq('import_id', id), req.user).select('id');
+  if (dealsError) return res.status(400).json({ error: dbErrorMessage(dealsError) });
+  await mirrorDelete('deals', deletedDeals);
+
+  // Contacts it created, minus any that another deal still links to
+  const { data: contacts, error: contactsError } = await fetchAll(() =>
+    scopeOwned(supabase.from('contacts').select('id').eq('import_id', id), req.user).order('id')
+  );
+  if (contactsError) return res.status(400).json({ error: dbErrorMessage(contactsError) });
+  const contactIds = contacts.map((c) => c.id);
+  const inUse = new Set();
+  for (let i = 0; i < contactIds.length; i += ID_CHUNK) {
+    const chunk = contactIds.slice(i, i + ID_CHUNK);
+    const { data, error } = await fetchAll(() =>
+      scopeCompany(supabase.from('deals').select('id, contact_id'), req.user).in('contact_id', chunk).order('id')
+    );
+    if (error) return res.status(400).json({ error: dbErrorMessage(error) });
+    data.forEach((d) => inUse.add(d.contact_id));
+  }
+  const unused = contactIds.filter((cid) => !inUse.has(cid));
+  let deletedContacts = 0;
+  for (let i = 0; i < unused.length; i += ID_CHUNK) {
+    const { data, error } = await supabase.from('contacts').delete().in('id', unused.slice(i, i + ID_CHUNK)).select('id');
+    if (error) return res.status(400).json({ error: dbErrorMessage(error) });
+    deletedContacts += data.length;
+    await mirrorDelete('contacts', data);
+  }
+
+  const { count: remaining, error: countError } = await supabase
+    .from('deals')
+    .select('id', { count: 'exact' })
+    .eq('company_id', req.user.company_id)
+    .eq('import_id', id)
+    .range(0, 0);
+  if (countError) return res.status(400).json({ error: dbErrorMessage(countError) });
+  if (remaining) {
+    const { data } = await supabase.from('imports').update({ deal_count: remaining }).eq('id', id).select();
+    await mirrorUpsert('imports', data);
+  } else {
+    const { data } = await supabase.from('imports').delete().eq('id', id).select('id');
+    await mirrorDelete('imports', data);
+  }
+
+  await recordAudit(req.user, 'deal.import_delete', {
+    entity: 'import',
+    entityId: id,
+    details: { fileName: imp.file_name, deletedDeals: deletedDeals.length, deletedContacts, remainingDeals: remaining ?? 0 },
+  });
+  return res.json({ deletedDeals: deletedDeals.length, deletedContacts, remainingDeals: remaining ?? 0 });
 });
 
 // PATCH /api/deals/:id — update a deal (e.g. move stage). Reps may only edit their own
