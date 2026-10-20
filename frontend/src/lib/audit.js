@@ -52,6 +52,8 @@ export function describeAudit(entry) {
       return d.title ? `Deleted deal “${d.title}”` : 'Deleted a deal';
     case 'deal.import':
       return `Imported ${d.imported} deal${d.imported === 1 ? '' : 's'} from ${d.fileName ? `“${d.fileName}”` : 'CSV'}${d.skipped ? `, ${d.skipped} skipped` : ''}`;
+    case 'deal.import_rename':
+      return `Renamed an import${d.from ? ` from “${d.from}”` : ''} to “${d.to}”`;
     case 'deal.import_delete':
       return `Deleted the import${d.fileName ? ` “${d.fileName}”` : ''}: ${d.deletedDeals} deal${d.deletedDeals === 1 ? '' : 's'}${d.deletedContacts ? ` and ${d.deletedContacts} contact${d.deletedContacts === 1 ? '' : 's'}` : ''}`;
     case 'contact.create':
