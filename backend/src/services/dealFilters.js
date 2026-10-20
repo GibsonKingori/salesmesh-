@@ -24,6 +24,7 @@ export function parseDealQuery(query, user) {
   // Reps only ever see their own deals, so an owner filter means nothing for them
   if (query.owner_id && user.role !== 'representative') filters.owner_id = String(query.owner_id);
   if (query.campaign_id) filters.campaign_id = String(query.campaign_id);
+  if (query.import_id) filters.import_id = String(query.import_id);
 
   let page = null;
   if (query.limit !== undefined || query.offset !== undefined) {
@@ -50,6 +51,7 @@ export function applyDealFilters(query, filters) {
   if (filters.status) query = query.in('stage', STATUS_STAGES[filters.status]);
   if (filters.owner_id) query = query.eq('owner_id', filters.owner_id);
   if (filters.campaign_id) query = query.eq('campaign_id', filters.campaign_id);
+  if (filters.import_id) query = query.eq('import_id', filters.import_id);
   return query;
 }
 
@@ -60,5 +62,6 @@ export function matchesDealFilters(deal, filters) {
   if (filters.status && !STATUS_STAGES[filters.status].includes(deal.stage)) return false;
   if (filters.owner_id && deal.owner_id !== filters.owner_id) return false;
   if (filters.campaign_id && deal.campaign_id !== filters.campaign_id) return false;
+  if (filters.import_id && deal.import_id !== filters.import_id) return false;
   return true;
 }
