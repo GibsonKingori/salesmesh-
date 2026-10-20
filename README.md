@@ -144,6 +144,8 @@ Records are imported through **Deals → Import deals**. Supported formats:
 
 Every import is validated and previewed before anything is saved. The preview shows the number of deals, total value, stage breakdown, new contacts, and any skipped rows with the reason. A template is provided at `sample-data/deals-import-template.csv`.
 
+An import can be taken back: **Undo import** right after saving, or **Deals → Past imports** later. Deleting an import removes every deal it created (with their activities) and the contacts it added that no other deal uses. Reps see their own imports, managers also their team's, and admins the whole company's. Deals imported before this feature existed aren't linked to an import, so they can only be deleted one at a time.
+
 ### Designed for real-world records
 
 Businesses do not need to reformat their data to fit SalesMesh:

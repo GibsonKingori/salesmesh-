@@ -32,7 +32,9 @@ export default function PipelineBoard({ deals, scores, savingId, onMove, onOpen 
   };
 
   return (
-    <div className="no-scrollbar flex gap-3 overflow-x-auto p-4">
+    // Scrolls sideways to reach every stage, and each column scrolls on its own, so a stage with
+    // many deals doesn't stretch the page
+    <div className="thin-scrollbar flex items-start gap-3 overflow-x-auto p-4">
       {columns.map(({ stage, items, total }) => (
         <section
           key={stage}
@@ -44,21 +46,21 @@ export default function PipelineBoard({ deals, scores, savingId, onMove, onOpen 
             if (!e.currentTarget.contains(e.relatedTarget)) setOverStage(null);
           }}
           onDrop={handleDrop(stage)}
-          className={`flex w-60 shrink-0 flex-col rounded-xl border p-2 transition-colors ${
+          className={`flex max-h-[calc(100dvh-14rem)] min-h-[12rem] w-64 shrink-0 flex-col rounded-xl border p-2 transition-colors ${
             overStage === stage && draggingId
               ? 'border-brand-400/60 bg-brand-500/[0.06]'
               : 'border-fg/10 bg-fg/[0.02]'
           }`}
           aria-label={`${stage} column`}
         >
-          <header className="mb-2 flex items-center justify-between px-1">
+          <header className="mb-2 flex shrink-0 items-center justify-between px-1">
             <StageBadge stage={stage} />
             <span className="text-xs text-subtle" title={currency(total)}>
               {items.length} · {currencyShort(total)}
             </span>
           </header>
 
-          <ul className="flex min-h-[4rem] flex-1 flex-col gap-2">
+          <ul className="thin-scrollbar -mr-1 flex min-h-[4rem] flex-1 flex-col gap-2 overflow-y-auto pr-1">
             {items.map((d) => (
               <li
                 key={d.id}
@@ -73,7 +75,7 @@ export default function PipelineBoard({ deals, scores, savingId, onMove, onOpen 
                   setOverStage(null);
                 }}
                 onClick={() => onOpen(d)}
-                className={`cursor-grab rounded-lg border border-fg/10 bg-surface p-3 shadow-sm transition-opacity hover:border-fg/20 active:cursor-grabbing ${
+                className={`shrink-0 cursor-grab rounded-lg border border-fg/10 bg-surface p-3 shadow-sm transition-opacity hover:border-fg/20 active:cursor-grabbing ${
                   draggingId === d.id || savingId === d.id ? 'opacity-50' : ''
                 }`}
               >

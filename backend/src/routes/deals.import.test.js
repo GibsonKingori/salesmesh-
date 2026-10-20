@@ -385,3 +385,56 @@ describe('more than 1,000 deals', () => {
     expect(imported.every((d) => d.contact_id)).toBe(true);
   });
 });
+
+describe('deleting an import', () => {
+  const del = (user, id) => request(app).delete(`/api/deals/imports/${id}`).set('Authorization', tokenFor(user));
+  const listImports = (user) => request(app).get('/api/deals/imports').set('Authorization', tokenFor(user));
+
+  test('each import is listed with its file name and what it saved', async () => {
+    const res = await upload(manager, SME_EXPORT, {}, 'march-sales.csv');
+    expect(res.body.importId).toBeTruthy();
+
+    const list = await listImports(manager);
+    expect(list.status).toBe(200);
+    expect(list.body.imports).toEqual([
+      expect.objectContaining({ id: res.body.importId, file_name: 'march-sales.csv', user_name: manager.name, deal_count: 5, contact_count: 1, total_value: 695000 }),
+    ]);
+    expect(fake.tables.deals.every((d) => d.import_id === res.body.importId)).toBe(true);
+    // A rep sees only their own imports
+    expect((await listImports(rep)).body.imports).toEqual([]);
+  });
+
+  test('removes its deals and the contacts it added, but keeps contacts other deals use', async () => {
+    fake.tables.deals.push({ id: 'manual', company_id: 'co-1', title: 'Manual', value: 1, stage: 'lead', owner_id: rep.id });
+    const first = await upload(rep, 'title,value,stage,customer\nA,100,lead,Wanjiru\nB,200,lead,Otieno\n');
+    // A later deal (not from the import) links one of the contacts it created
+    const otieno = fake.tables.contacts.find((c) => c.name === 'Otieno');
+    fake.tables.deals.find((d) => d.id === 'manual').contact_id = otieno.id;
+
+    const res = await del(rep, first.body.importId);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ deletedDeals: 2, deletedContacts: 1, remainingDeals: 0 });
+    expect(fake.tables.deals.map((d) => d.id)).toEqual(['manual']);
+    expect(fake.tables.contacts.map((c) => c.name).sort()).toEqual(['Jane Achieng', 'Otieno']);
+    expect(fake.tables.imports).toEqual([]);
+    expect(mirrorDelete).toHaveBeenCalledWith('deals', expect.any(Array));
+    expect(fake.tables.audit_logs.find((e) => e.action === 'deal.import_delete').details).toMatchObject({ deletedDeals: 2, deletedContacts: 1 });
+  });
+
+  test("other users can't delete someone else's import", async () => {
+    const res = await upload(manager, 'title,value,stage\nA,100,lead\n');
+    expect((await del(rep, res.body.importId)).status).toBe(404);
+    fake.tables.users.push({ id: 'other-admin', name: 'Other', email: 'o@x.com', role: 'admin', password_hash: 'x', is_active: true, company_id: 'co-2' });
+    expect((await del({ id: 'other-admin', email: 'o@x.com', role: 'admin' }, res.body.importId)).status).toBe(404);
+    expect(fake.tables.deals).toHaveLength(1);
+  });
+
+  test('a manager deletes a rep import; deals since moved out of the team are kept', async () => {
+    const res = await upload(rep, 'title,value,stage\nA,100,lead\nB,200,lead\n');
+    fake.tables.deals[0].owner_id = 'someone-else';
+
+    const out = await del(manager, res.body.importId);
+    expect(out.body).toMatchObject({ deletedDeals: 1, remainingDeals: 1 });
+    expect(fake.tables.imports).toEqual([expect.objectContaining({ id: res.body.importId, deal_count: 1 })]);
+  });
+});

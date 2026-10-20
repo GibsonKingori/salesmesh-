@@ -5,6 +5,7 @@ import StageSelect from '../components/StageSelect.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import AddDealModal from '../components/AddDealModal.jsx';
 import ImportCsvModal from '../components/ImportCsvModal.jsx';
+import ImportHistoryModal from '../components/ImportHistoryModal.jsx';
 import DealDrawer from '../components/DealDrawer.jsx';
 import PipelineBoard from '../components/PipelineBoard.jsx';
 import { currency, formatDate } from '../lib/format.js';
@@ -83,6 +84,7 @@ export default function DealsPage({ scope }) {
   const [savingId, setSavingId] = useState(null);
   const [showAddDeal, setShowAddDeal] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showImportHistory, setShowImportHistory] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState(null);
   const [view, setView] = useState(readView);
 
@@ -244,6 +246,12 @@ export default function DealsPage({ scope }) {
               className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-1.5 text-sm font-medium text-fg-soft transition-colors hover:border-fg/20 hover:bg-fg/10 hover:text-fg"
             >
               Import deals
+            </button>
+            <button
+              onClick={() => setShowImportHistory(true)}
+              className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-1.5 text-sm font-medium text-fg-soft transition-colors hover:border-fg/20 hover:bg-fg/10 hover:text-fg"
+            >
+              Past imports
             </button>
             <button
               onClick={() => setShowAddDeal(true)}
@@ -471,6 +479,8 @@ export default function DealsPage({ scope }) {
           onImported={() => fetchAll()}
         />
       )}
+
+      {showImportHistory && <ImportHistoryModal onClose={() => setShowImportHistory(false)} onDeleted={() => fetchAll()} />}
     </DashboardShell>
   );
 }
