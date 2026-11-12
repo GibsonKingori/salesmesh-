@@ -83,32 +83,52 @@ export default function ImportHistoryModal({ onClose, onDeleted, onView }) {
         <p className="py-6 text-center text-sm text-muted">No imports yet. Files you import on this page will be listed here.</p>
       ) : (
         <ul className="divide-y divide-fg/5 rounded-lg border border-fg/10">
-          {imports.map((imp) => (
-            <li key={imp.id} className="px-3 py-3">
-              {renaming?.id === imp.id ? (
-                <form onSubmit={saveName} className="flex gap-2">
-                  <input
-                    autoFocus
-                    value={renaming.name}
-                    onChange={(e) => setRenaming({ ...renaming, name: e.target.value })}
-                    maxLength={200}
-                    placeholder="e.g. Maven CRM test data"
-                    aria-label="Import name"
-                    className="min-w-0 flex-1 rounded-lg border border-fg/10 bg-fg/5 px-2.5 py-1 text-sm text-fg outline-none focus:border-brand-400/60 focus:ring-2 focus:ring-brand-500/20"
-                  />
-                  <button type="submit" disabled={!renaming.name.trim()} className="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-500 disabled:opacity-50">
-                    Save
-                  </button>
-                  <button type="button" onClick={() => setRenaming(null)} className={smallButton}>
-                    Cancel
-                  </button>
-                </form>
-              ) : (
-                <p className="break-words text-sm font-medium text-fg">
-                  {importLabel(imp)}
-                  {!imp.file_name && <span className="ml-1.5 text-xs font-normal text-faint">(no name saved)</span>}
-                </p>
-              )}
+          {imports.map((imp) => {
+            const isDeletingThis = confirmingId === imp.id;
+            const isDeletingOther = confirmingId !== null && !isDeletingThis;
+
+            return (
+              <li
+                key={imp.id}
+                className={`px-3 py-3 transition-all duration-200 ${
+                  isDeletingThis
+                    ? 'rounded-xl border-2 border-red-500/50 bg-red-500/5 shadow-md dark:bg-red-950/20 my-1.5'
+                    : isDeletingOther
+                    ? 'opacity-30 pointer-events-none'
+                    : ''
+                }`}
+              >
+                {renaming?.id === imp.id ? (
+                  <form onSubmit={saveName} className="flex gap-2">
+                    <input
+                      autoFocus
+                      value={renaming.name}
+                      onChange={(e) => setRenaming({ ...renaming, name: e.target.value })}
+                      maxLength={200}
+                      placeholder="e.g. Maven CRM test data"
+                      aria-label="Import name"
+                      className="min-w-0 flex-1 rounded-lg border border-fg/10 bg-fg/5 px-2.5 py-1 text-sm text-fg outline-none focus:border-brand-400/60 focus:ring-2 focus:ring-brand-500/20"
+                    />
+                    <button type="submit" disabled={!renaming.name.trim()} className="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-500 disabled:opacity-50">
+                      Save
+                    </button>
+                    <button type="button" onClick={() => setRenaming(null)} className={smallButton}>
+                      Cancel
+                    </button>
+                  </form>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <p className={`break-words text-sm font-medium ${isDeletingThis ? 'text-red-950 font-bold dark:text-red-100' : 'text-fg'}`}>
+                      {importLabel(imp)}
+                      {!imp.file_name && <span className="ml-1.5 text-xs font-normal text-faint">(no name saved)</span>}
+                    </p>
+                    {isDeletingThis && (
+                      <span className="rounded-md bg-red-500/20 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-red-700 dark:text-red-300">
+                        Deleting
+                      </span>
+                    )}
+                  </div>
+                )}
               <p className="mt-0.5 text-xs text-subtle">
                 Imported {when(imp.created_at)}
                 {imp.user_name && ` by ${imp.user_name}`}
@@ -159,8 +179,9 @@ export default function ImportHistoryModal({ onClose, onDeleted, onView }) {
                 </div>
               )}
             </li>
-          ))}
-        </ul>
+          );
+        })}
+      </ul>
       )}
     </Modal>
   );
