@@ -1,0 +1,7 @@
+title,value,stage,created_date,closed_date,expected_close_date,campaign,contact_name,company,contact_email,contact_phone,owner
+Kitchen renovation,480000,New,12/11/2026,,15/12/2026,,Amina Hassan,Oakline Homes,amina@example.com,,
+Warehouse painting,225000,Under review,09/11/2026,,10/12/2026,,James Kariuki,Northstar Logistics,james@example.com,,
+Office partition installation,360000,Plan shared,05/11/2026,,05/12/2026,,Grace Wambui,Maple House,grace@example.com,,
+Roof repair contract,175000,Waiting for decision,30/10/2026,,28/11/2026,,Daniel Kiptoo,Highland Academy,daniel@example.com,,
+Water tank installation,95000,Completed,18/10/2026,30/10/2026,,,Esther Njeri,Bluebird Farm,esther@example.com,,
+Boundary wall project,310000,Not proceeding,10/10/2026,22/10/2026,,,Samuel Otieno,Riverbend Estate,samuel@example.com,,

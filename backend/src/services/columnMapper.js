@@ -8,7 +8,7 @@
 import { IMPORT_FIELDS, mapHeaders, parseDate, parseMoney, parseStage, simplify } from './dealImport.js';
 import { askAiJson, ReadError } from './ai.js';
 import { DEFAULT_PIPELINE_STAGES } from './pipelineStages.js';
-import { customFieldMapping } from './dealFields.js';
+import { customFieldMapping, validateDealFields } from './dealFields.js';
 
 const SAMPLE_ROWS = 8;
 const MAX_DISTINCT = 15; // columns with this few different values are listed in full (status columns)
@@ -158,14 +158,14 @@ export async function buildMapping(table, stages = DEFAULT_PIPELINE_STAGES, fiel
         return id ? [[simplify(value), id]] : [];
       })
   );
-  if (!needsAi(table, columns, stages, fields)) return { columns, stages: stageMap, mappedBy: 'headings', notes: [] };
+  if (!needsAi(table, columns, stages, fields)) return { columns, stages: stageMap, newFields: [], mappedBy: 'headings', notes: [] };
   try {
     const ai = await matchWithAi(table, stages, fields);
     return { ...ai, stages: { ...stageMap, ...ai.stages }, mappedBy: 'ai', notes: [] };
   } catch (err) {
     if (!(err instanceof ReadError)) throw err;
     // Still usable with the headings we know; the user can match the rest in the preview
-    return { columns: guessByContent(table, columns), stages: stageMap, mappedBy: 'headings', notes: [`Automatic column matching is unavailable right now. ${err.message} Match your columns below.`] };
+    return { columns: guessByContent(table, columns), stages: stageMap, newFields: [], mappedBy: 'headings', notes: [`Automatic column matching is unavailable right now. ${err.message} Match your columns below.`] };
   }
 }
 
@@ -179,17 +179,28 @@ export function parseClientMapping(json, headers, pipeline = DEFAULT_PIPELINE_ST
     return null;
   }
   if (!Array.isArray(m?.columns) || m.columns.length !== headers.length) return null;
+  const rawNewFields = m.newFields ?? [];
+  const validatedNewFields = validateDealFields(rawNewFields);
+  if (validatedNewFields.error || validatedNewFields.fields.some((field) => !field.active)) return null;
+  const knownIds = new Set(fields.map((field) => field.id));
+  const knownLabels = new Set(fields.map((field) => field.label.toLowerCase()));
+  for (const field of validatedNewFields.fields) {
+    if (knownIds.has(field.id) || knownLabels.has(field.label.toLowerCase())) return null;
+    knownIds.add(field.id);
+    knownLabels.add(field.label.toLowerCase());
+  }
   const used = new Set();
-  const validFields = new Set([...IMPORT_FIELDS, ...customMappings(fields)]);
+  const validFields = new Set([...IMPORT_FIELDS, ...customMappings(fields), ...customMappings(validatedNewFields.fields)]);
   const columns = m.columns.map((f) => {
     if (!validFields.has(f) || used.has(f)) return null;
     used.add(f);
     return f;
   });
+  if (validatedNewFields.fields.some((field) => !used.has(customFieldMapping(field.id)))) return null;
   const stages = Object.fromEntries(
     Object.entries(m.stages && typeof m.stages === 'object' ? m.stages : {})
       .filter(([, s]) => pipeline.some((stage) => stage.id === s))
       .map(([k, s]) => [simplify(k), s])
   );
-  return { columns, stages, mappedBy: m.mappedBy === 'ai' ? 'ai' : 'user', notes: [] };
+  return { columns, stages, newFields: validatedNewFields.fields, mappedBy: m.mappedBy === 'ai' ? 'ai' : 'user', notes: [] };
 }

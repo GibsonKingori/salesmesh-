@@ -1,5 +1,3 @@
-import { mapHeaders } from './dealImport.js';
-
 const FIELD_TYPES = new Set(['text', 'number', 'date', 'boolean']);
 const FIELD_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const MAX_FIELDS = 20;
@@ -20,7 +18,6 @@ export function validateDealFields(input) {
 
     if (!FIELD_ID.test(id)) return { error: `Field ${index + 1} has an invalid id` };
     if (!label || label.length > 50) return { error: `Field ${index + 1} needs a label of 1 to 50 characters` };
-    if (mapHeaders([label])[0]) return { error: `"${label}" matches a standard import column; choose a more specific name` };
     if (!FIELD_TYPES.has(type)) return { error: `Field "${label}" has an unsupported type` };
     if (typeof active !== 'boolean') return { error: `Field "${label}" must be active or hidden` };
     if (ids.has(id)) return { error: `Field id "${id}" is used more than once` };

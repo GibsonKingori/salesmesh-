@@ -20,7 +20,6 @@ describe('validateDealFields', () => {
       { id: 'area', label: ' region ', type: 'text' },
     ]).error).toMatch(/used more than once/);
     expect(validateDealFields([{ id: 'region', label: 'Region', type: 'currency' }]).error).toMatch(/unsupported type/);
-    expect(validateDealFields([{ id: 'status', label: 'Status', type: 'text' }]).error).toMatch(/standard import column/);
   });
 });
 

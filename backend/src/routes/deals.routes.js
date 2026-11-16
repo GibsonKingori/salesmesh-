@@ -16,7 +16,7 @@ import { readImportFile, ReadError } from '../services/importReaders.js';
 import { warmUpAi } from '../services/ai.js';
 import { canAccessOwned, sameCompany, scopeCompany, scopeOwned, visibleOwnerIds } from '../services/access.js';
 import { loadPipelineStages, isClosedStage } from '../services/pipelineStages.js';
-import { customFieldMapping, loadDealFields, validateCustomFieldValues } from '../services/dealFields.js';
+import { customFieldMapping, loadDealFields, validateCustomFieldValues, validateDealFields } from '../services/dealFields.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -253,15 +253,16 @@ router.post('/import', uploadFile, async (req, res) => {
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
-  let dealFields;
+  let companyDealFields;
   try {
-    dealFields = (await loadDealFields(supabase, req.user.company_id)).filter((field) => field.active !== false);
+    companyDealFields = await loadDealFields(supabase, req.user.company_id);
   } catch (err) {
     return res.status(400).json({ error: err.message });
   }
+  const dealFields = companyDealFields.filter((field) => field.active !== false);
 
   // Which column holds what: the mapping the user checked in the preview, else work it out
-  let mapping = parseClientMapping(req.body?.mapping, table.headers, pipeline, dealFields);
+  let mapping = parseClientMapping(req.body?.mapping, table.headers, pipeline, companyDealFields);
   if (!mapping) {
     try {
       mapping = await buildMapping(table, pipeline, dealFields);
@@ -270,6 +271,11 @@ router.post('/import', uploadFile, async (req, res) => {
       return res.status(500).json({ error: 'Could not read that file' });
     }
   }
+  mapping.newFields = mapping.newFields || [];
+  if (mapping.newFields.length && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Only an administrator can create custom fields during import' });
+  }
+  const mappedDealFields = [...dealFields, ...mapping.newFields];
   const fields = mapping.columns;
   // Rows with no status (e.g. a sales book) are completed sales unless the user says otherwise
   const defaultWon = pipeline.find((stage) => stage.type === 'won').id;
@@ -319,7 +325,7 @@ router.post('/import', uploadFile, async (req, res) => {
   records.forEach(({ line: rowNum, raw }) => {
     const { row, fixes, error } = readDealRow(raw, today, { stageMap: mapping.stages, defaultStage, rowNum, stages: pipeline });
     if (error) return skipped.push({ row: rowNum, reason: error });
-    const customValues = readImportedCustomFields(raw, dealFields);
+    const customValues = readImportedCustomFields(raw, mappedDealFields);
     if (customValues.error) return skipped.push({ row: rowNum, reason: customValues.error });
     fixes.forEach((f) => (fixCounts[f] = (fixCounts[f] || 0) + 1));
 
@@ -420,8 +426,8 @@ router.post('/import', uploadFile, async (req, res) => {
     recognisedColumns: fields.filter(Boolean),
     // Each of the user's columns and what it was matched to, so the preview can show and change it
     columns: table.headers.map((header, i) => ({ header, field: fields[i] })),
-    mapping: { columns: fields, stages: mapping.stages, mappedBy: mapping.mappedBy },
-    customFields: dealFields,
+    mapping: { columns: fields, stages: mapping.stages, newFields: mapping.newFields, mappedBy: mapping.mappedBy },
+    customFields: [...companyDealFields, ...mapping.newFields],
     mappedBy: mapping.mappedBy,
     // Open the column list in the preview when the user should look at it
     checkColumns: mapping.mappedBy !== 'headings' || mapping.notes.length > 0 || !fields.includes('title') || !fields.includes('value') || fields.some((field, i) => !field && table.rows.some((row) => String(row.cells[i] ?? '').trim())),
@@ -441,6 +447,19 @@ router.post('/import', uploadFile, async (req, res) => {
   if (dryRun || deals.length === 0) {
     if (!dryRun) return res.status(400).json({ error: 'No valid rows to import', ...summary });
     return res.json({ dryRun: true, ...summary, preview: deals.slice(0, 5).map((d) => d.deal) });
+  }
+
+  if (mapping.newFields.length) {
+    const validatedFields = validateDealFields([...companyDealFields, ...mapping.newFields]);
+    if (validatedFields.error) return res.status(400).json({ error: validatedFields.error, ...summary });
+    const { data: company, error } = await supabase
+      .from('companies')
+      .update({ deal_fields: validatedFields.fields })
+      .eq('id', req.user.company_id)
+      .select()
+      .single();
+    if (error) return res.status(400).json({ error: dbErrorMessage(error), ...summary });
+    await mirrorUpsert('companies', company);
   }
 
   // The import itself is saved first, and every deal and contact it creates points at it, so the
@@ -497,7 +516,14 @@ router.post('/import', uploadFile, async (req, res) => {
   await recordAudit(req.user, 'deal.import', {
     entity: 'import',
     entityId: importRow.id,
-    details: { imported: saved, skipped: skipped.length, newContacts: newContacts.size, totalValue: summary.totalValue, fileName },
+    details: {
+      imported: saved,
+      skipped: skipped.length,
+      newContacts: newContacts.size,
+      totalValue: summary.totalValue,
+      fileName,
+      createdFields: mapping.newFields.map(({ label, type }) => ({ label, type })),
+    },
   });
   return res.status(201).json({ ...summary, imported: saved, importId: importRow.id });
 });

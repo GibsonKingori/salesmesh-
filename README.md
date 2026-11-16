@@ -155,7 +155,7 @@ Every import is validated and previewed before anything is saved. The preview sh
 
 An import can be taken back: **Undo import** right after saving, or **Deals → Past imports** later. Deleting an import removes every deal it created (with their activities) and the contacts it added that no other deal uses. Reps see their own imports, managers also their team's, and admins the whole company's. Deals imported before this feature existed aren't linked to an import, so they can only be deleted one at a time.
 
-Admins can add business-specific deal fields under **System configuration**. Fields can be text, number, date, or yes/no; active fields appear when adding or viewing deals. During import, SalesMesh can match spreadsheet columns to these fields by name or with AI, and the preview lets you correct the mapping. Hiding a field keeps its saved values.
+Admins can add business-specific deal fields under **System configuration**. Fields can be text, number, date, or yes/no; active fields appear when adding or viewing deals. During import, SalesMesh can match spreadsheet columns to these fields by name or with AI, and the preview lets you correct the mapping. Admins can also create a new field from an unmatched column; it is saved only when the import is confirmed. Hiding a field keeps its saved values.
 
 ### Designed for real-world records
 

@@ -65,33 +65,64 @@ const FIELD_OPTIONS = [
 const selectClass =
   'rounded-md border border-fg/10 bg-surface px-2 py-1 text-xs text-fg focus:border-brand-400/50 focus:outline-none';
 const customFieldMapping = (id) => `custom:${id}`;
+const NEW_FIELD_OPTION = '__create_custom_field__';
+const FIELD_TYPES = [
+  ['text', 'Text'],
+  ['number', 'Number'],
+  ['date', 'Date'],
+  ['boolean', 'Yes / no'],
+];
+
+const fieldId = (label, fields) => {
+  const base = label.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'field';
+  let id = base;
+  let suffix = 2;
+  while (fields.some((field) => field.id === id)) id = `${base.slice(0, 37)}-${suffix++}`;
+  return id;
+};
 
 // Each column in the user's file and what it was matched to; changing one re-checks the file
-function ColumnMatches({ columns, isManager, disabled, onChange, customFields = [] }) {
+function ColumnMatches({ columns, isManager, isAdmin, disabled, onChange, customFields = [], newFields = [] }) {
   const options = [
     ...FIELD_OPTIONS.filter(([f]) => isManager || f !== 'owner'),
-    ...customFields.map((field) => [customFieldMapping(field.id), field.label]),
+    ...customFields.filter((field) => field.active !== false).map((field) => [customFieldMapping(field.id), field.label]),
   ];
   return (
     <div className="space-y-1.5">
       {columns.map(({ header, field }, i) => (
-        <div key={i} className="flex items-center justify-between gap-3 text-xs">
-          <span className="min-w-0 truncate text-fg-soft" title={header}>
-            {header || <span className="text-subtle">(no heading)</span>}
-          </span>
-          <select
-            value={field || ''}
-            disabled={disabled}
-            onChange={(e) => onChange(i, e.target.value || null)}
-            className={`${selectClass} w-48 shrink-0`}
-          >
-            <option value="">Not used</option>
-            {options.map(([f, label]) => (
-              <option key={f} value={f}>
-                {label}
-              </option>
-            ))}
-          </select>
+        <div key={i} className="space-y-1">
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <span className="min-w-0 truncate text-fg-soft" title={header}>
+              {header || <span className="text-subtle">(no heading)</span>}
+            </span>
+            <select
+              value={field || ''}
+              disabled={disabled}
+              onChange={(e) => onChange(i, e.target.value || null)}
+              className={`${selectClass} w-48 shrink-0`}
+            >
+              <option value="">Not used</option>
+              {options.map(([f, label]) => (
+                <option key={f} value={f}>
+                  {label}
+                </option>
+              ))}
+              {isAdmin && <option value={NEW_FIELD_OPTION}>Create new field from this column</option>}
+            </select>
+          </div>
+          {newFields.find((customField) => customFieldMapping(customField.id) === field) && (
+            <div className="flex items-center justify-end gap-2">
+              <span className="text-[11px] text-subtle">New field type</span>
+              <select
+                value={newFields.find((customField) => customFieldMapping(customField.id) === field).type}
+                disabled={disabled}
+                onChange={(e) => onChange(i, field, e.target.value)}
+                className={`${selectClass} w-24`}
+              >
+                {FIELD_TYPES.map(([type, label]) => <option key={type} value={type}>{label}</option>)}
+              </select>
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -188,6 +219,7 @@ function SkippedList({ skipped }) {
 export default function ImportCsvModal({ onClose, onImported, stages }) {
   const { user } = useAuth();
   const isManager = ['manager', 'admin'].includes(user?.role);
+  const isAdmin = user?.role === 'admin';
   const fileInputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [error, setError] = useState('');
@@ -257,12 +289,29 @@ export default function ImportCsvModal({ onClose, onImported, stages }) {
     }
   };
 
-  const changeColumn = (index, field) => {
+  const changeColumn = (index, field, type) => {
+    let nextField = field;
+    let newFields = [...(preview.mapping.newFields || [])];
+    if (field === NEW_FIELD_OPTION) {
+      const base = String(preview.columns[index].header ?? '').trim() || `Column ${index + 1}`;
+      const labels = new Set([...(preview.customFields || []), ...newFields].map((item) => item.label.toLowerCase()));
+      let label = base;
+      let suffix = 2;
+      while (labels.has(label.toLowerCase())) label = `${base} (${suffix++})`;
+      const id = fieldId(label, [...(preview.customFields || []), ...newFields]);
+      newFields = [...newFields, { id, label, type: 'text', active: true }];
+      nextField = customFieldMapping(id);
+    } else if (type) {
+      newFields = newFields.map((item) => (customFieldMapping(item.id) === field ? { ...item, type } : item));
+    }
+
     const columns = preview.mapping.columns.map((f, i) => {
-      if (i === index) return field;
-      return field && f === field ? null : f; // a field belongs to one column
+      if (i === index) return nextField;
+      return nextField && f === nextField ? null : f; // a field belongs to one column
     });
-    recheck({ mapping: { ...preview.mapping, columns, mappedBy: 'user' } });
+    const used = new Set(columns.filter(Boolean));
+    newFields = newFields.filter((item) => used.has(customFieldMapping(item.id)));
+    recheck({ mapping: { ...preview.mapping, columns, newFields, mappedBy: 'user' } });
   };
 
   const changeStatus = (value, stage) =>
@@ -479,7 +528,20 @@ export default function ImportCsvModal({ onClose, onImported, stages }) {
                 <span className="font-normal text-subtle"> · change any that are wrong</span>
               </summary>
               <div className="mt-2.5">
-                <ColumnMatches columns={preview.columns} isManager={isManager} disabled={loading} onChange={changeColumn} customFields={preview.customFields} />
+                <ColumnMatches
+                  columns={preview.columns}
+                  isManager={isManager}
+                  isAdmin={isAdmin}
+                  disabled={loading}
+                  onChange={changeColumn}
+                  customFields={preview.customFields}
+                  newFields={preview.mapping.newFields}
+                />
+                {preview.mapping.newFields?.length > 0 && (
+                  <p className="mt-2 text-xs text-subtle">
+                    These new fields will be added to your business when you confirm the import.
+                  </p>
+                )}
               </div>
             </details>
           )}

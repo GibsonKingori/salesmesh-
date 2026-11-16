@@ -1,0 +1,7 @@
+title,value,stage,created_date,closed_date,expected_close_date,campaign,contact_name,company,contact_email,contact_phone,owner
+Display fridge order,85000,New,10/11/2026,,25/11/2026,,Miriam Wanjiku,FreshMart,miriam@example.com,,
+Bulk cooking oil supply,42000,Under review,08/11/2026,,22/11/2026,,Kevin Otieno,Corner Shop,kevin@example.com,,
+Checkout counter upgrade,56000,Plan shared,04/11/2026,,20/11/2026,,Faith Njeri,Green Basket,faith@example.com,,
+Freezer replacement,110000,Waiting for decision,01/11/2026,,24/11/2026,,Brian Kamau,Market Square,brian@example.com,,
+School stationery order,32000,Completed,25/10/2026,02/11/2026,,,Lydia Achieng,Sunrise Books,lydia@example.com,,
+Damaged stock claim,14000,Not proceeding,20/10/2026,28/10/2026,,,Peter Mwangi,Value Depot,peter@example.com,,

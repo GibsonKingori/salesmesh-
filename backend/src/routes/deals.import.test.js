@@ -8,6 +8,7 @@ process.env.AI_PROVIDER = 'claude'; // Claude is mocked below; services/ai.test.
 
 const manager = { id: 'mgr-1', name: 'Mo Otieno', email: 'mo@example.com', role: 'manager' };
 const rep = { id: 'rep-1', name: 'Rae Wanjiku', email: 'rae@example.com', role: 'representative', manager_id: 'mgr-1' };
+const admin = { id: 'admin-1', name: 'Ada Njeri', email: 'ada@example.com', role: 'admin' };
 
 let fake;
 const mirrorUpsert = jest.fn();
@@ -56,7 +57,7 @@ beforeEach(() => {
   Object.assign(claude, { reply: null, error: null, requests: [] });
   fake = createFakeSupabase(
   {
-    users: [manager, rep].map((u) => ({ ...u, password_hash: 'x', is_active: true })),
+    users: [manager, rep, admin].map((u) => ({ ...u, password_hash: 'x', is_active: true })),
     campaigns: [{ id: 'camp-radio', name: 'Radio Citizen Q1', budget: 50000 }],
     contacts: [{ id: 'c-1', name: 'Jane Achieng', company: 'Achieng Hardware', owner_id: rep.id }],
     deals: [],
@@ -257,6 +258,30 @@ describe('POST /api/deals/import', () => {
     expect(saved.status).toBe(201);
     expect(fake.tables.deals[0].custom_fields).toEqual({ 'service-type': 'Deep clean' });
     expect(claude.requests).toHaveLength(1);
+  });
+
+  test('an admin can create a custom field from an unmatched column only when confirming the import', async () => {
+    fake.tables.companies = [{ id: 'co-1', deal_fields: [] }];
+    const csv = 'title,value,stage,created_date,Site Code\nOffice cleaning,500,lead,02/03/2026,SC-42\n';
+    const mapping = {
+      columns: ['title', 'value', 'stage', 'created_date', 'custom:site-code'],
+      stages: {},
+      newFields: [{ id: 'site-code', label: 'Site Code', type: 'text', active: true }],
+      mappedBy: 'user',
+    };
+
+    const preview = await upload(admin, csv, { dryRun: 1 }, 'site.csv', { mapping });
+    expect(preview.status).toBe(200);
+    expect(fake.tables.companies[0].deal_fields).toEqual([]);
+    expect(preview.body.customFields).toContainEqual(mapping.newFields[0]);
+
+    const denied = await upload(manager, csv, { dryRun: 1 }, 'site.csv', { mapping });
+    expect(denied.status).toBe(403);
+
+    const saved = await upload(admin, csv, {}, 'site.csv', { mapping });
+    expect(saved.status).toBe(201);
+    expect(fake.tables.companies[0].deal_fields).toContainEqual(mapping.newFields[0]);
+    expect(fake.tables.deals[0].custom_fields).toEqual({ 'site-code': 'SC-42' });
   });
 
   test("the user's reading of a status word wins, even over the built-in list", async () => {
