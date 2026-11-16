@@ -1,15 +1,14 @@
 // Pure calculation functions for SalesMesh's four analytics types (proposal §2.7, §3.8).
 // Kept dependency-free (no Supabase/Express) so they're directly unit-testable per §3.6.1.
 
-const OPEN_STAGES = ['lead', 'qualified', 'proposal', 'negotiation'];
-const FUNNEL_STAGE_ORDER = ['lead', 'qualified', 'proposal', 'negotiation', 'won'];
+import { DEFAULT_PIPELINE_STAGES } from './pipelineStages.js';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Adjacent-stage transitions a manager can set a target conversion rate for
-// (stored in the funnel_benchmarks table, edited on the Settings page).
-export const FUNNEL_TRANSITIONS = FUNNEL_STAGE_ORDER.slice(0, -1).map(
-  (stage, idx) => `${stage}->${FUNNEL_STAGE_ORDER[idx + 1]}`
-);
+export const FUNNEL_TRANSITIONS = (stages = DEFAULT_PIPELINE_STAGES) => {
+  const funnel = stages.filter((stage) => stage.type !== 'lost');
+  return funnel.slice(0, -1).map((stage, idx) => `${stage.id}->${funnel[idx + 1].id}`);
+};
 export const DEFAULT_FORECAST_HORIZONS = [30, 60, 90];
 
 const sum = (nums) => nums.reduce((a, b) => a + b, 0);
@@ -17,16 +16,18 @@ const round2 = (n) => Math.round(n * 100) / 100;
 const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
 
 // --- Descriptive: what happened ---
-export function descriptiveSummary(deals) {
+const stageType = (stages, id) => stages.find((stage) => stage.id === id)?.type || 'open';
+
+export function descriptiveSummary(deals, stages = DEFAULT_PIPELINE_STAGES) {
   const totalDeals = deals.length;
   const totalValue = sum(deals.map((d) => Number(d.value) || 0));
-  const wonDeals = deals.filter((d) => d.stage === 'won');
-  const lostDeals = deals.filter((d) => d.stage === 'lost');
-  const openDeals = deals.filter((d) => !['won', 'lost'].includes(d.stage));
+  const wonDeals = deals.filter((d) => stageType(stages, d.stage) === 'won');
+  const lostDeals = deals.filter((d) => stageType(stages, d.stage) === 'lost');
+  const openDeals = deals.filter((d) => stageType(stages, d.stage) === 'open');
 
-  const byStage = FUNNEL_STAGE_ORDER.concat('lost').reduce((acc, stage) => {
-    const stageDeals = deals.filter((d) => d.stage === stage);
-    acc[stage] = { count: stageDeals.length, value: round2(sum(stageDeals.map((d) => Number(d.value) || 0))) };
+  const byStage = stages.reduce((acc, stage) => {
+    const stageDeals = deals.filter((d) => d.stage === stage.id);
+    acc[stage.id] = { count: stageDeals.length, value: round2(sum(stageDeals.map((d) => Number(d.value) || 0))) };
     return acc;
   }, {});
 
@@ -39,6 +40,7 @@ export function descriptiveSummary(deals) {
     lostCount: lostDeals.length,
     wonValue: round2(sum(wonDeals.map((d) => Number(d.value) || 0))),
     byStage,
+    stages,
   };
 }
 
@@ -47,22 +49,30 @@ export function descriptiveSummary(deals) {
 // lost at), so this undercounts true historical drop-off; a real cohort funnel needs
 // stage-change history, which Iteration 1's schema doesn't yet capture. ---
 // benchmarks: { 'lead->qualified': 0.5, ... }; transitions without one are never flagged.
-export function conversionFunnel(deals, benchmarks = {}) {
-  const reached = (stageIdx) =>
-    deals.filter((d) => FUNNEL_STAGE_ORDER.indexOf(d.stage) >= stageIdx).length;
-
-  const stages = FUNNEL_STAGE_ORDER.map((stage, idx) => ({ stage, reached: reached(idx) }));
+export function conversionFunnel(deals, benchmarks = {}, pipeline = DEFAULT_PIPELINE_STAGES) {
+  const stages = pipeline.map((stage, idx, funnel) => ({
+    stage: stage.id,
+    label: stage.label,
+    id: stage.id,
+    type: stage.type,
+    count: deals.filter((deal) => deal.stage === stage.id).length,
+    reached: stage.type === 'lost' ? 0 : deals.filter((d) => funnel.findIndex((item) => item.id === d.stage) >= idx && stageType(pipeline, d.stage) !== 'lost').length,
+  }));
 
   const transitions = [];
-  for (let i = 0; i < stages.length - 1; i++) {
-    const from = stages[i];
-    const to = stages[i + 1];
-    const key = `${from.stage}->${to.stage}`;
+  const funnelStages = stages.filter((stage) => stage.type !== 'lost');
+  for (let i = 0; i < funnelStages.length - 1; i++) {
+    const from = funnelStages[i];
+    const to = funnelStages[i + 1];
+    const key = `${from.id}->${to.id}`;
     const actualRate = from.reached > 0 ? to.reached / from.reached : null;
     const expectedRate = benchmarks[key] ?? null;
     transitions.push({
       from: from.stage,
       to: to.stage,
+      fromLabel: from.label,
+      toLabel: to.label,
+      transition: `${from.id}->${to.id}`,
       actualRate: actualRate === null ? null : round2(actualRate),
       expectedRate,
       underperforming: actualRate !== null && expectedRate !== null && actualRate < expectedRate,
@@ -151,10 +161,10 @@ export function campaignROI(campaign, deals) {
 // --- Pipeline velocity: (opportunities x avg deal size x win rate) / avg sales cycle length,
 // per proposal §2.2.2. Basis choices: opportunities = currently-open deal count;
 // avg deal size / cycle length drawn from WON deals only (the only deals with a real cycle length). ---
-export function pipelineVelocity(deals) {
-  const openDeals = deals.filter((d) => OPEN_STAGES.includes(d.stage));
-  const wonDeals = deals.filter((d) => d.stage === 'won');
-  const lostDeals = deals.filter((d) => d.stage === 'lost');
+export function pipelineVelocity(deals, stages = DEFAULT_PIPELINE_STAGES) {
+  const openDeals = deals.filter((d) => stageType(stages, d.stage) === 'open');
+  const wonDeals = deals.filter((d) => stageType(stages, d.stage) === 'won');
+  const lostDeals = deals.filter((d) => stageType(stages, d.stage) === 'lost');
   const closedCount = wonDeals.length + lostDeals.length;
 
   if (wonDeals.length === 0 || closedCount === 0) {
@@ -185,9 +195,10 @@ export function pipelineVelocity(deals) {
 // --- Prescriptive: deal priority score from stage position, close-date urgency, and
 // relative deal value (proposal §2.7). Weights (0.4/0.35/0.25) are a first-pass judgment
 // call, not derived from user research — a documented candidate for Iteration 2/3 tuning. ---
-export function priorityScore(deal, openDeals, now = new Date()) {
-  const stageIdx = OPEN_STAGES.indexOf(deal.stage);
-  const stageScore = stageIdx === -1 ? 0 : stageIdx / (OPEN_STAGES.length - 1);
+export function priorityScore(deal, openDeals, now = new Date(), stages = DEFAULT_PIPELINE_STAGES) {
+  const openStages = stages.filter((stage) => stage.type === 'open');
+  const stageIdx = openStages.findIndex((stage) => stage.id === deal.stage);
+  const stageScore = stageIdx === -1 ? 0 : stageIdx / Math.max(openStages.length - 1, 1);
 
   let urgencyScore = 0.5;
   if (deal.expected_close_date) {
@@ -204,13 +215,13 @@ export function priorityScore(deal, openDeals, now = new Date()) {
 
 // --- Team performance (manager dashboard): one row per representative, best won value first.
 // Managers and admins only appear if they own deals themselves. ---
-export function teamPerformance(deals, users) {
+export function teamPerformance(deals, users, stages = DEFAULT_PIPELINE_STAGES) {
   return users
     .map((u) => {
       const own = deals.filter((d) => d.owner_id === u.id);
-      const open = own.filter((d) => OPEN_STAGES.includes(d.stage));
-      const won = own.filter((d) => d.stage === 'won');
-      const closedCount = won.length + own.filter((d) => d.stage === 'lost').length;
+      const open = own.filter((d) => stageType(stages, d.stage) === 'open');
+      const won = own.filter((d) => stageType(stages, d.stage) === 'won');
+      const closedCount = won.length + own.filter((d) => stageType(stages, d.stage) === 'lost').length;
       return {
         id: u.id,
         name: u.name,
@@ -228,11 +239,11 @@ export function teamPerformance(deals, users) {
 }
 
 // --- Rep dashboard: open deals past their expected close date, and those due within soonDays ---
-export function dealsNeedingAttention(deals, now = new Date(), soonDays = 14) {
+export function dealsNeedingAttention(deals, now = new Date(), soonDays = 14, stages = DEFAULT_PIPELINE_STAGES) {
   const today = now.toISOString().slice(0, 10);
   const soon = new Date(now.getTime() + soonDays * DAY_MS).toISOString().slice(0, 10);
   const dated = deals
-    .filter((d) => OPEN_STAGES.includes(d.stage) && d.expected_close_date)
+    .filter((d) => stageType(stages, d.stage) === 'open' && d.expected_close_date)
     .sort((a, b) => a.expected_close_date.localeCompare(b.expected_close_date));
   return {
     overdue: dated.filter((d) => d.expected_close_date < today),
@@ -241,9 +252,9 @@ export function dealsNeedingAttention(deals, now = new Date(), soonDays = 14) {
   };
 }
 
-export function rankDealsByPriority(deals, now = new Date()) {
-  const openDeals = deals.filter((d) => OPEN_STAGES.includes(d.stage));
+export function rankDealsByPriority(deals, now = new Date(), stages = DEFAULT_PIPELINE_STAGES) {
+  const openDeals = deals.filter((d) => stageType(stages, d.stage) === 'open');
   return openDeals
-    .map((d) => ({ ...d, priority_score: priorityScore(d, openDeals, now) }))
+    .map((d) => ({ ...d, priority_score: priorityScore(d, openDeals, now, stages) }))
     .sort((a, b) => b.priority_score - a.priority_score);
 }

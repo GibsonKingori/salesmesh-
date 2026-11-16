@@ -68,6 +68,8 @@ export function describeAudit(entry) {
       return `Deleted campaign “${d.name}”${d.unlinkedDeals ? ` (${d.unlinkedDeals} deal${d.unlinkedDeals === 1 ? '' : 's'} unlinked)` : ''}`;
     case 'settings.benchmarks_update':
       return 'Updated conversion targets';
+    case 'settings.deal_fields_update':
+      return 'Updated business-specific deal fields';
     case 'settings.join_code_reset':
       return 'Replaced the company join code';
     default:

@@ -27,8 +27,6 @@ const TEMPLATE_ROWS = [
   ['Roofing sheets', '90000', 'lost', '01/04/2026', '10/04/2026', '', '', 'Peter Kamau', 'Kamau Builders', '', '', ''],
 ];
 
-const STAGE_ORDER = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
-
 // Anything services/importReaders.js can read. Screenshots and PDFs are read by AI.
 const ACCEPT = '.csv,.tsv,.txt,.xlsx,.xlsm,.xls,.ods,.numbers,.json,.pdf,image/png,image/jpeg,image/webp,image/gif';
 
@@ -66,10 +64,14 @@ const FIELD_OPTIONS = [
 
 const selectClass =
   'rounded-md border border-fg/10 bg-surface px-2 py-1 text-xs text-fg focus:border-brand-400/50 focus:outline-none';
+const customFieldMapping = (id) => `custom:${id}`;
 
 // Each column in the user's file and what it was matched to; changing one re-checks the file
-function ColumnMatches({ columns, isManager, disabled, onChange }) {
-  const options = FIELD_OPTIONS.filter(([f]) => isManager || f !== 'owner');
+function ColumnMatches({ columns, isManager, disabled, onChange, customFields = [] }) {
+  const options = [
+    ...FIELD_OPTIONS.filter(([f]) => isManager || f !== 'owner'),
+    ...customFields.map((field) => [customFieldMapping(field.id), field.label]),
+  ];
   return (
     <div className="space-y-1.5">
       {columns.map(({ header, field }, i) => (
@@ -96,20 +98,11 @@ function ColumnMatches({ columns, isManager, disabled, onChange }) {
   );
 }
 
-const STAGE_OPTIONS = [
-  ['won', 'Won (completed sale)'],
-  ['lost', 'Lost (cancelled)'],
-  ['negotiation', 'Negotiation (part paid)'],
-  ['proposal', 'Proposal (quoted)'],
-  ['qualified', 'Qualified (interested)'],
-  ['lead', 'Lead (new enquiry)'],
-];
-
 // Same as simplify() in services/dealImport.js, which keys the status mapping
 const simplify = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 // Each status word in the user's file and the stage it was read as; changing one re-checks the file
-function StatusMatches({ statuses, disabled, onChange }) {
+function StatusMatches({ statuses, stages, disabled, onChange }) {
   return (
     <div className="space-y-1.5">
       {statuses.map(({ value, count, stage, matched }) => (
@@ -119,9 +112,9 @@ function StatusMatches({ statuses, disabled, onChange }) {
             {!matched && <span className="text-amber-700 dark:text-amber-300"> · not recognised</span>}
           </span>
           <select value={stage} disabled={disabled} onChange={(e) => onChange(value, e.target.value)} className={`${selectClass} w-48 shrink-0`}>
-            {STAGE_OPTIONS.map(([s, label]) => (
-              <option key={s} value={s}>
-                {label}
+            {stages.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
               </option>
             ))}
           </select>
@@ -192,7 +185,7 @@ function SkippedList({ skipped }) {
 
 // Step 1: choose a file. Step 2: the API checks it (dry run) and we show what will happen.
 // Step 3: import. Nothing is saved until the user confirms the preview.
-export default function ImportCsvModal({ onClose, onImported }) {
+export default function ImportCsvModal({ onClose, onImported, stages }) {
   const { user } = useAuth();
   const isManager = ['manager', 'admin'].includes(user?.role);
   const fileInputRef = useRef(null);
@@ -437,8 +430,8 @@ export default function ImportCsvModal({ onClose, onImported }) {
             <Row label="Deals to import">{preview.imported}</Row>
             <Row label="Total value">{currency(preview.totalValue)}</Row>
             <Row label="By stage">
-              {STAGE_ORDER.filter((s) => preview.byStage[s])
-                .map((s) => `${preview.byStage[s]} ${s}`)
+              {stages.filter((s) => preview.byStage[s.id])
+                .map((s) => `${preview.byStage[s.id]} ${s.label}`)
                 .join(' · ') || '—'}
             </Row>
             <Row label="New contacts">{preview.newContacts}</Row>
@@ -459,12 +452,9 @@ export default function ImportCsvModal({ onClose, onImported }) {
                 onChange={(e) => recheck({ defaultStage: e.target.value })}
                 className={`${selectClass} shrink-0`}
               >
-                <option value="won">Completed sales (won)</option>
-                <option value="lead">New enquiries (lead)</option>
-                <option value="qualified">Interested (qualified)</option>
-                <option value="proposal">Quoted (proposal)</option>
-                <option value="negotiation">In negotiation</option>
-                <option value="lost">Lost</option>
+                {stages.map((stage) => (
+                  <option key={stage.id} value={stage.id}>{stage.label}</option>
+                ))}
               </select>
             </label>
           )}
@@ -478,7 +468,7 @@ export default function ImportCsvModal({ onClose, onImported }) {
                 How your statuses were read<span className="font-normal text-subtle"> · change any that are wrong</span>
               </summary>
               <div className="mt-2.5">
-                <StatusMatches statuses={preview.statuses} disabled={loading} onChange={changeStatus} />
+                <StatusMatches statuses={preview.statuses} stages={stages} disabled={loading} onChange={changeStatus} />
               </div>
             </details>
           )}
@@ -489,7 +479,7 @@ export default function ImportCsvModal({ onClose, onImported }) {
                 <span className="font-normal text-subtle"> · change any that are wrong</span>
               </summary>
               <div className="mt-2.5">
-                <ColumnMatches columns={preview.columns} isManager={isManager} disabled={loading} onChange={changeColumn} />
+                <ColumnMatches columns={preview.columns} isManager={isManager} disabled={loading} onChange={changeColumn} customFields={preview.customFields} />
               </div>
             </details>
           )}

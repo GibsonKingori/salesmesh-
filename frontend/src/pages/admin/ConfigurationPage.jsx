@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import api from '../../api/client.js';
 import DashboardShell from '../../components/DashboardShell.jsx';
 import ConversionTargetsForm from '../../components/ConversionTargetsForm.jsx';
+import DealFieldsForm from '../../components/DealFieldsForm.jsx';
+import PipelineStagesForm from '../../components/PipelineStagesForm.jsx';
 import Panel from '../../components/Panel.jsx';
 
 const mirrorText = (m) => {
@@ -34,7 +36,11 @@ export default function ConfigurationPage() {
   return (
     <DashboardShell title="System configuration">
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-        <ConversionTargetsForm />
+        <div className="grid gap-4">
+          <DealFieldsForm />
+          <PipelineStagesForm />
+          <ConversionTargetsForm />
+        </div>
 
         <Panel title="System settings" subtitle="Set in backend/.env. Restart the API after changing them.">
           {error && <p className="px-5 py-4 text-sm text-red-700 dark:text-red-300">{error}</p>}

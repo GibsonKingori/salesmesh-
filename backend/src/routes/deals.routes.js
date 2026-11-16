@@ -10,12 +10,13 @@ import { parseDealQuery, applyDealFilters, matchesDealFilters } from '../service
 import { recordAudit } from '../services/audit.js';
 import { fetchAll } from '../services/fetchAll.js';
 import { newestFirst, visibleDeals } from '../services/dealCache.js';
-import { CLOSED_STAGES, contactKey, dateToTimestamp, parseStage, readDealRow, simplify } from '../services/dealImport.js';
+import { CLOSED_STAGES, contactKey, dateToTimestamp, parseDate, parseMoney, parseStage, readDealRow, simplify } from '../services/dealImport.js';
 import { buildMapping, parseClientMapping } from '../services/columnMapper.js';
-import { VALID_STAGES } from '../services/dealUpdates.js';
 import { readImportFile, ReadError } from '../services/importReaders.js';
 import { warmUpAi } from '../services/ai.js';
 import { canAccessOwned, sameCompany, scopeCompany, scopeOwned, visibleOwnerIds } from '../services/access.js';
+import { loadPipelineStages, isClosedStage } from '../services/pipelineStages.js';
+import { customFieldMapping, loadDealFields, validateCustomFieldValues } from '../services/dealFields.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -62,16 +63,22 @@ async function checkLinks(user, { contact_id, campaign_id }) {
 // Optional: q (title search), status (open|closed), owner_id, campaign_id, limit + offset.
 // Closed deals come most recently updated first, everything else newest first.
 router.get('/', async (req, res) => {
-  const { filters, page, error: queryError } = parseDealQuery(req.query, req.user);
+  let stages;
+  try {
+    stages = await loadPipelineStages(supabase, req.user.company_id);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const { filters, page, error: queryError } = parseDealQuery(req.query, req.user, stages);
   if (queryError) return res.status(400).json({ error: queryError });
 
   const orderBy = filters.status === 'closed' ? 'updated_at' : 'created_at';
-  const buildQuery = () => applyDealFilters(scopedDealsQuery(req.user, { orderBy }), filters);
+  const buildQuery = () => applyDealFilters(scopedDealsQuery(req.user, { orderBy }), filters, stages);
 
   if (!page) {
     const { data, error } = await visibleDeals(req.user);
     if (error) return res.status(400).json({ error: error.message });
-    const deals = data.filter((d) => matchesDealFilters(d, filters)).sort(newestFirst(orderBy));
+    const deals = data.filter((d) => matchesDealFilters(d, filters, stages)).sort(newestFirst(orderBy));
     return res.json({ deals, total: deals.length });
   }
 
@@ -84,14 +91,21 @@ router.get('/', async (req, res) => {
 // Takes the same optional filters and paging as GET /api/deals. Scores are computed over all
 // open deals first, so filtering never changes a deal's score.
 router.get('/priority', async (req, res) => {
-  const { filters, page, error: queryError } = parseDealQuery(req.query, req.user);
+  let stages;
+  try {
+    stages = await loadPipelineStages(supabase, req.user.company_id);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const { filters, page, error: queryError } = parseDealQuery(req.query, req.user, stages);
   if (queryError) return res.status(400).json({ error: queryError });
 
   const { data, error } = await visibleDeals(req.user);
   if (error) return res.status(400).json({ error: error.message });
 
   // Newest first before ranking, so deals with equal scores stay newest first
-  const ranked = rankDealsByPriority([...data].sort(newestFirst())).filter((d) => matchesDealFilters(d, filters));
+  const ranked = rankDealsByPriority([...data].sort(newestFirst()), new Date(), stages)
+    .filter((d) => matchesDealFilters(d, filters, stages));
   const deals = page ? ranked.slice(page.offset, page.offset + page.limit) : ranked;
   return res.json({ deals, total: ranked.length });
 });
@@ -103,6 +117,23 @@ router.post('/', async (req, res) => {
   if (!title || value == null || !stage) {
     return res.status(400).json({ error: 'title, value, and stage are required' });
   }
+  let stages;
+  try {
+    stages = await loadPipelineStages(supabase, req.user.company_id);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  if (!stages.some((item) => item.id === stage)) {
+    return res.status(400).json({ error: `stage must be one of: ${stages.map((item) => item.id).join(', ')}` });
+  }
+  let dealFields;
+  try {
+    dealFields = await loadDealFields(supabase, req.user.company_id);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const customFields = validateCustomFieldValues(req.body.custom_fields ?? {}, dealFields);
+  if (customFields.error) return res.status(400).json({ error: customFields.error });
   const linkError = await checkLinks(req.user, { contact_id, campaign_id });
   if (linkError) return res.status(400).json({ error: linkError });
 
@@ -117,8 +148,9 @@ router.post('/', async (req, res) => {
         contact_id: contact_id || null,
         campaign_id: campaign_id || null,
         expected_close_date: expected_close_date || null,
+        custom_fields: customFields.values,
         owner_id: req.user.id,
-        closed_at: closedAtForStageChange(null, stage) ?? null,
+        closed_at: closedAtForStageChange(null, stage, new Date(), stages) ?? null,
       },
     ])
     .select()
@@ -215,11 +247,24 @@ router.post('/import', uploadFile, async (req, res) => {
     return res.status(400).json({ error, notes: table.notes });
   }
 
+  let pipeline;
+  try {
+    pipeline = await loadPipelineStages(supabase, req.user.company_id);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  let dealFields;
+  try {
+    dealFields = (await loadDealFields(supabase, req.user.company_id)).filter((field) => field.active !== false);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+
   // Which column holds what: the mapping the user checked in the preview, else work it out
-  let mapping = parseClientMapping(req.body?.mapping, table.headers);
+  let mapping = parseClientMapping(req.body?.mapping, table.headers, pipeline, dealFields);
   if (!mapping) {
     try {
-      mapping = await buildMapping(table);
+      mapping = await buildMapping(table, pipeline, dealFields);
     } catch (err) {
       console.error('Deal import: column matching failed:', err);
       return res.status(500).json({ error: 'Could not read that file' });
@@ -227,7 +272,10 @@ router.post('/import', uploadFile, async (req, res) => {
   }
   const fields = mapping.columns;
   // Rows with no status (e.g. a sales book) are completed sales unless the user says otherwise
-  const defaultStage = VALID_STAGES.includes(req.body?.defaultStage) ? req.body.defaultStage : 'won';
+  const defaultWon = pipeline.find((stage) => stage.type === 'won').id;
+  const defaultStage = pipeline.some((stage) => stage.id === req.body?.defaultStage)
+    ? req.body.defaultStage
+    : defaultWon;
   const records = table.rows.map(({ line, cells }) => ({
     line,
     raw: Object.fromEntries(fields.flatMap((f, i) => (f ? [[f, cells[i] ?? '']] : []))),
@@ -269,8 +317,10 @@ router.post('/import', uploadFile, async (req, res) => {
   let ownerIgnored = 0;
 
   records.forEach(({ line: rowNum, raw }) => {
-    const { row, fixes, error } = readDealRow(raw, today, { stageMap: mapping.stages, defaultStage, rowNum });
+    const { row, fixes, error } = readDealRow(raw, today, { stageMap: mapping.stages, defaultStage, rowNum, stages: pipeline });
     if (error) return skipped.push({ row: rowNum, reason: error });
+    const customValues = readImportedCustomFields(raw, dealFields);
+    if (customValues.error) return skipped.push({ row: rowNum, reason: customValues.error });
     fixes.forEach((f) => (fixCounts[f] = (fixCounts[f] || 0) + 1));
 
     // An owner or campaign we can't find doesn't stop the deal: it is imported without that link
@@ -307,7 +357,7 @@ router.post('/import', uploadFile, async (req, res) => {
       }
     }
 
-    const closed = CLOSED_STAGES.includes(row.stage);
+    const closed = isClosedStage(pipeline, row.stage);
     if (closed && !row.closed_date) closedWithoutDate++;
     if (!row.created_date) withoutCreatedDate++;
 
@@ -323,6 +373,7 @@ router.post('/import', uploadFile, async (req, res) => {
         title: row.title,
         value: row.value,
         stage: row.stage,
+        custom_fields: customValues.values,
         expected_close_date: row.expected_close_date || null,
         campaign_id: campaignId,
         owner_id: ownerId,
@@ -370,9 +421,10 @@ router.post('/import', uploadFile, async (req, res) => {
     // Each of the user's columns and what it was matched to, so the preview can show and change it
     columns: table.headers.map((header, i) => ({ header, field: fields[i] })),
     mapping: { columns: fields, stages: mapping.stages, mappedBy: mapping.mappedBy },
+    customFields: dealFields,
     mappedBy: mapping.mappedBy,
     // Open the column list in the preview when the user should look at it
-    checkColumns: mapping.mappedBy !== 'headings' || mapping.notes.length > 0 || !fields.includes('title') || !fields.includes('value'),
+    checkColumns: mapping.mappedBy !== 'headings' || mapping.notes.length > 0 || !fields.includes('title') || !fields.includes('value') || fields.some((field, i) => !field && table.rows.some((row) => String(row.cells[i] ?? '').trim())),
     stageColumn: fields.includes('stage'),
     defaultStage,
     defaultedRows: (fixCounts.defaultedStage || 0) + (fixCounts.unknownStage || 0),
@@ -453,6 +505,38 @@ router.post('/import', uploadFile, async (req, res) => {
 // Imports the user may see, like deals: their own, their team's (manager), or the company's (admin)
 const scopedImports = (query, user) => scopeOwned(query, user, 'user_id');
 const ID_CHUNK = 200; // ids per .in() filter, so the request URL stays short
+
+function readImportedCustomFields(raw, fields) {
+  const values = {};
+  for (const field of fields) {
+    const key = customFieldMapping(field.id);
+    if (!(key in raw)) continue;
+    const value = String(raw[key] ?? '').trim();
+    if (!value) {
+      values[field.id] = null;
+      continue;
+    }
+
+    if (field.type === 'text') {
+      if (value.length > 1000) return { error: `"${field.label}" is longer than 1,000 characters` };
+      values[field.id] = value;
+    } else if (field.type === 'number') {
+      const number = parseMoney(value);
+      if (!Number.isFinite(number)) return { error: `Can't read "${value}" as ${field.label}` };
+      values[field.id] = number;
+    } else if (field.type === 'date') {
+      const date = parseDate(value);
+      if (!date) return { error: `Can't read "${value}" as ${field.label}` };
+      values[field.id] = date;
+    } else {
+      const normalized = value.toLowerCase();
+      if (['yes', 'y', 'true', '1', 'ndiyo'].includes(normalized)) values[field.id] = true;
+      else if (['no', 'n', 'false', '0', 'hapana'].includes(normalized)) values[field.id] = false;
+      else return { error: `Can't read "${value}" as ${field.label}; use yes or no` };
+    }
+  }
+  return { values };
+}
 
 // What an import's deals look like, so the user can tell imports apart (older ones have no file
 // name): a few example titles, the span of the deals' dates, and how many are open, won and lost
@@ -583,7 +667,7 @@ router.patch('/:id', async (req, res) => {
 
   const { data: existing, error: fetchError } = await supabase
     .from('deals')
-    .select('id, owner_id, stage, company_id')
+    .select('id, owner_id, stage, company_id, custom_fields')
     .eq('id', id)
     .maybeSingle();
 
@@ -593,14 +677,31 @@ router.patch('/:id', async (req, res) => {
     return res.status(404).json({ error: 'Deal not found' });
   }
 
-  const { updates, error: validationError } = buildDealUpdate(req.body, req.user);
+  let stages;
+  try {
+    stages = await loadPipelineStages(supabase, req.user.company_id);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const { updates, error: validationError } = buildDealUpdate(req.body, req.user, new Date(), stages);
   if (validationError) return res.status(400).json({ error: validationError });
+  if ('custom_fields' in updates) {
+    let dealFields;
+    try {
+      dealFields = await loadDealFields(supabase, req.user.company_id);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    const customFields = validateCustomFieldValues(updates.custom_fields, dealFields);
+    if (customFields.error) return res.status(400).json({ error: customFields.error });
+    updates.custom_fields = { ...(existing.custom_fields || {}), ...customFields.values };
+  }
   const linkError = await checkLinks(req.user, updates);
   if (linkError) return res.status(400).json({ error: linkError });
   if ('owner_id' in updates && !(await ownerIsAssignable(req.user, updates.owner_id))) {
     return res.status(400).json({ error: req.user.role === 'manager' ? 'You can only assign deals to yourself or your own representatives' : 'That user is not in your company' });
   }
-  const closedAt = closedAtForStageChange(existing.stage, updates.stage);
+  const closedAt = closedAtForStageChange(existing.stage, updates.stage, new Date(), stages);
   if (closedAt !== undefined) updates.closed_at = closedAt;
 
   const { data, error } = await supabase
@@ -614,12 +715,14 @@ router.patch('/:id', async (req, res) => {
   await mirrorUpsert('deals', data);
 
   if (updates.stage && updates.stage !== existing.stage) {
+    const fromLabel = stages.find((stage) => stage.id === existing.stage)?.label || existing.stage;
+    const toLabel = stages.find((stage) => stage.id === updates.stage)?.label || updates.stage;
     const { data: activity, error: activityError } = await supabase.from('activities').insert([
       {
         deal_id: id,
         user_id: req.user.id,
         type: 'stage_change',
-        notes: `${existing.stage} → ${updates.stage}`,
+        notes: `${fromLabel} → ${toLabel}`,
       },
     ]).select();
     // The deal update already succeeded; don't fail the request over the log entry

@@ -6,7 +6,7 @@
 // "Amount (KES)", "Kiasi", ...), anything else can be matched by services/columnMapper.js, money may include
 // "KES", commas or "/=", dates may be ISO, day-first or written out, and a missing deal name,
 // amount or status gets a sensible default that the preview tells the user about.
-import { VALID_STAGES } from './dealUpdates.js';
+import { DEFAULT_PIPELINE_STAGES, isClosedStage } from './pipelineStages.js';
 
 export const CLOSED_STAGES = ['won', 'lost'];
 
@@ -136,7 +136,7 @@ const text = (v) => (v === undefined || v === null ? '' : String(v).trim());
 // Returns { row, fixes } or { error }; `fixes` lists what was assumed so the preview can say so.
 // Options: today 'YYYY-MM-DD'; stageMap { simplified status text -> stage } (from columnMapper);
 // defaultStage for rows with no status; rowNum for generated titles.
-export function readDealRow(raw, today, { stageMap = {}, defaultStage = 'won', rowNum } = {}) {
+export function readDealRow(raw, today, { stageMap = {}, defaultStage = 'won', rowNum, stages = DEFAULT_PIPELINE_STAGES } = {}) {
   const fixes = [];
   const company = text(raw.company);
   const contactName = text(raw.contact_name);
@@ -159,12 +159,12 @@ export function readDealRow(raw, today, { stageMap = {}, defaultStage = 'won', r
   const rawStage = text(raw.stage);
   // The user's (or AI's) reading of their own status words comes first, then the built-in list
   let stage = rawStage ? stageMap[simplify(rawStage)] ?? parseStage(rawStage) ?? null : null;
-  if (!stage || !VALID_STAGES.includes(stage)) {
+  if (!stage || !stages.some((item) => item.id === stage)) {
     fixes.push(rawStage ? 'unknownStage' : 'defaultedStage');
     stage = defaultStage;
   }
 
-  const closed = CLOSED_STAGES.includes(stage);
+  const closed = isClosedStage(stages, stage);
   const closeField = closed ? 'closed_date' : 'expected_close_date';
   const source = { ...raw };
   if (raw.close_date && !raw[closeField]) source[closeField] = raw.close_date;

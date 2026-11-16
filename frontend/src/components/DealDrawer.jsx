@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import api from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import StageSelect from './StageSelect.jsx';
+import DealCustomFields from './DealCustomFields.jsx';
 
 const currency = (n) =>
   new Intl.NumberFormat('en-KE', { style: 'currency', currency: 'KES', maximumFractionDigits: 0 }).format(n || 0);
@@ -35,7 +36,7 @@ const Label = ({ children }) => (
 
 // Side panel for one deal: edit stage/close date, link a contact, and read/write its activity log.
 // onChanged is called after any deal edit so the dashboard can re-rank; onDeleted after a delete.
-export default function DealDrawer({ deal: initialDeal, onClose, onChanged, onDeleted }) {
+export default function DealDrawer({ deal: initialDeal, stages, onClose, onChanged, onDeleted }) {
   const { user } = useAuth();
   const [deal, setDeal] = useState(initialDeal);
   const [activities, setActivities] = useState([]);
@@ -43,6 +44,8 @@ export default function DealDrawer({ deal: initialDeal, onClose, onChanged, onDe
   const [loadingLog, setLoadingLog] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [dealFields, setDealFields] = useState([]);
+  const [customValues, setCustomValues] = useState(initialDeal.custom_fields || {});
 
   const [logType, setLogType] = useState('call');
   const [logNotes, setLogNotes] = useState('');
@@ -64,6 +67,9 @@ export default function DealDrawer({ deal: initialDeal, onClose, onChanged, onDe
   useEffect(() => {
     fetchActivities();
     api.get('/contacts').then((res) => setContacts(res.data.contacts)).catch(() => {});
+    api.get('/settings/deal-fields')
+      .then(({ data }) => setDealFields(data.fields.filter((field) => field.active !== false)))
+      .catch((err) => setError(err.response?.data?.error || 'Could not load business fields'));
   }, [deal.id]);
 
   useEffect(() => {
@@ -78,6 +84,7 @@ export default function DealDrawer({ deal: initialDeal, onClose, onChanged, onDe
     try {
       const { data } = await api.patch(`/deals/${deal.id}`, fields);
       setDeal(data.deal);
+      if ('custom_fields' in fields) setCustomValues(data.deal.custom_fields || {});
       onChanged();
       // A stage move writes a stage_change entry server-side
       if ('stage' in fields) fetchActivities();
@@ -183,7 +190,7 @@ export default function DealDrawer({ deal: initialDeal, onClose, onChanged, onDe
           <section className="grid grid-cols-2 gap-4">
             <div>
               <Label>Stage</Label>
-              <StageSelect stage={deal.stage} disabled={saving} onChange={(stage) => updateDeal({ stage })} />
+              <StageSelect stage={deal.stage} stages={stages} disabled={saving} onChange={(stage) => updateDeal({ stage })} />
             </div>
             <div>
               <Label>Expected close</Label>
@@ -196,6 +203,27 @@ export default function DealDrawer({ deal: initialDeal, onClose, onChanged, onDe
               />
             </div>
           </section>
+
+          {dealFields.length > 0 && (
+            <section className="space-y-3 rounded-xl border border-fg/10 bg-fg/[0.02] p-3">
+              <DealCustomFields
+                fields={dealFields}
+                values={customValues}
+                disabled={saving}
+                onChange={(id, value) => setCustomValues((prev) => ({ ...prev, [id]: value }))}
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => updateDeal({ custom_fields: customValues })}
+                  disabled={saving}
+                  className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-60"
+                >
+                  {saving ? 'Saving…' : 'Save business details'}
+                </button>
+              </div>
+            </section>
+          )}
 
           <section>
             <div className="mb-1.5 flex items-center justify-between">

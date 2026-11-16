@@ -41,9 +41,8 @@ export function DashboardState({ title, error }) {
 }
 
 export function FunnelCard({ title = 'Conversion funnel', diagnostic }) {
-  const hasTargets = diagnostic.transitions.some((t) => t.expectedRate !== null);
   return (
-    <Card title={title} subtitle={hasTargets ? 'Compared against the conversion targets' : 'Your admin hasn’t set conversion targets yet'}>
+    <Card title={title} subtitle="Number of deals currently at each step of your workflow">
       <ConversionFunnelChart stages={diagnostic.stages} transitions={diagnostic.transitions} />
     </Card>
   );
@@ -80,7 +79,7 @@ export function ForecastCard({ predictive, velocity }) {
 }
 
 // Ranked open deals. `ownerNames` (id → name) adds an owner column on the team view.
-export function PriorityDealsCard({ title, subtitle, deals, dealsPath, ownerNames, emptyDescription }) {
+export function PriorityDealsCard({ title, subtitle, deals, dealsPath, ownerNames, emptyDescription, stages }) {
   return (
     <Card title={title} subtitle={subtitle} action={<CardLink to={dealsPath}>View all deals →</CardLink>}>
       {deals.length === 0 ? (
@@ -100,7 +99,7 @@ export function PriorityDealsCard({ title, subtitle, deals, dealsPath, ownerName
               </div>
               <div className="flex shrink-0 items-center gap-4">
                 <span className="hidden text-sm text-muted sm:inline">{currency(d.value)}</span>
-                <StageBadge stage={d.stage} />
+                <StageBadge stage={d.stage} stages={stages} />
               </div>
             </li>
           ))}

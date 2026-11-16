@@ -9,6 +9,7 @@ const toPercentInput = (rate) => (rate === null ? '' : String(Math.round(rate * 
 // Admin-set conversion targets (System Configuration); the funnel on the Overview flags any stage below its target.
 export default function ConversionTargetsForm() {
   const [rows, setRows] = useState([]); // [{ transition, value: '50' | '' }]
+  const [stages, setStages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -18,9 +19,11 @@ export default function ConversionTargetsForm() {
     setRows(benchmarks.map((b) => ({ transition: b.transition, value: toPercentInput(b.rate) })));
 
   useEffect(() => {
-    api
-      .get('/settings/benchmarks')
-      .then((res) => applyBenchmarks(res.data.benchmarks))
+    Promise.all([api.get('/settings/benchmarks'), api.get('/settings/pipeline')])
+      .then(([benchmarks, pipeline]) => {
+        setStages(pipeline.data.stages);
+        applyBenchmarks(benchmarks.data.benchmarks);
+      })
       .catch((err) => setError(err.response?.data?.error || 'Could not load settings'))
       .finally(() => setLoading(false));
   }, []);
@@ -62,11 +65,13 @@ export default function ConversionTargetsForm() {
       ) : (
         <ul className="divide-y divide-fg/5">
           {rows.map((r, idx) => {
-            const [from, to] = r.transition.split('->');
+            const [fromId, toId] = r.transition.split('->');
+            const from = stages.find((stage) => stage.id === fromId)?.label || fromId;
+            const to = stages.find((stage) => stage.id === toId)?.label || toId;
             const id = `target-${r.transition}`;
             return (
               <li key={r.transition} className="flex items-center justify-between px-5 py-3">
-                <label htmlFor={id} className="text-sm capitalize text-fg-soft">
+                <label htmlFor={id} className="text-sm text-fg-soft">
                   {from} <span className="text-faint">&rarr;</span> {to}
                 </label>
                 <div className="flex items-center gap-2">

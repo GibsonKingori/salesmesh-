@@ -3,24 +3,23 @@ import StageBadge from './StageBadge.jsx';
 import StageSelect from './StageSelect.jsx';
 import { currency, currencyShort, formatDate } from '../lib/format.js';
 
-const STAGES = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
-
 // Kanban view of the pipeline: one column per stage. Cards can be dragged between columns
 // (mouse) or moved with the stage dropdown on each card (touch and keyboard).
 // `scores` maps deal id → priority score, used to order open columns.
-export default function PipelineBoard({ deals, scores, savingId, onMove, onOpen }) {
+export default function PipelineBoard({ deals, scores, savingId, onMove, onOpen, stages }) {
   const [draggingId, setDraggingId] = useState(null);
   const [overStage, setOverStage] = useState(null);
 
-  const columns = STAGES.map((stage) => {
+  const columns = stages.map((stageConfig) => {
+    const { id: stage } = stageConfig;
     const items = deals.filter((d) => d.stage === stage);
     items.sort((a, b) =>
-      ['won', 'lost'].includes(stage)
+      stageConfig.type !== 'open'
         ? new Date(b.updated_at) - new Date(a.updated_at)
         : (scores[b.id] ?? 0) - (scores[a.id] ?? 0)
     );
     const total = items.reduce((sum, d) => sum + (Number(d.value) || 0), 0);
-    return { stage, items, total };
+    return { stage, stageConfig, items, total };
   });
 
   const handleDrop = (stage) => (e) => {
@@ -35,7 +34,7 @@ export default function PipelineBoard({ deals, scores, savingId, onMove, onOpen 
     // Scrolls sideways to reach every stage, and each column scrolls on its own, so a stage with
     // many deals doesn't stretch the page
     <div className="thin-scrollbar flex items-start gap-3 overflow-x-auto p-4">
-      {columns.map(({ stage, items, total }) => (
+      {columns.map(({ stage, stageConfig, items, total }) => (
         <section
           key={stage}
           onDragOver={(e) => {
@@ -51,10 +50,10 @@ export default function PipelineBoard({ deals, scores, savingId, onMove, onOpen 
               ? 'border-brand-400/60 bg-brand-500/[0.06]'
               : 'border-fg/10 bg-fg/[0.02]'
           }`}
-          aria-label={`${stage} column`}
+          aria-label={`${stageConfig.label} column`}
         >
           <header className="mb-2 flex shrink-0 items-center justify-between px-1">
-            <StageBadge stage={stage} />
+            <StageBadge stage={stage} label={stageConfig.label} />
             <span className="text-xs text-subtle" title={currency(total)}>
               {items.length} · {currencyShort(total)}
             </span>
@@ -87,6 +86,7 @@ export default function PipelineBoard({ deals, scores, savingId, onMove, onOpen 
                   </span>
                   <StageSelect
                     stage={d.stage}
+                    stages={stages}
                     disabled={savingId === d.id}
                     onChange={(s) => onMove(d, s)}
                   />

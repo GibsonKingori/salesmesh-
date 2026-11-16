@@ -1,18 +1,17 @@
 // Validation for PATCH /api/deals/:id. Kept dependency-free (like analytics.js) so it's
 // unit-testable without Supabase.
 import { canAccessOwned } from './access.js';
+import { DEFAULT_PIPELINE_STAGES, isClosedStage } from './pipelineStages.js';
 
-export const VALID_STAGES = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
-
-const EDITABLE_FIELDS = ['title', 'value', 'stage', 'contact_id', 'campaign_id', 'expected_close_date'];
+const EDITABLE_FIELDS = ['title', 'value', 'stage', 'contact_id', 'campaign_id', 'expected_close_date', 'custom_fields'];
 const MANAGER_ONLY_FIELDS = ['owner_id'];
 
 // closed_at records when a deal was won or lost; the forecast and velocity read it.
 // Returns the closed_at to save when a deal moves from `previousStage` to `nextStage`,
 // or undefined when it shouldn't change (e.g. editing a won deal's title).
-export function closedAtForStageChange(previousStage, nextStage, now = new Date()) {
+export function closedAtForStageChange(previousStage, nextStage, now = new Date(), stages = DEFAULT_PIPELINE_STAGES) {
   if (!nextStage || nextStage === previousStage) return undefined;
-  return ['won', 'lost'].includes(nextStage) ? now.toISOString() : null;
+  return isClosedStage(stages, nextStage) ? now.toISOString() : null;
 }
 
 // Same company, and the deal's owner is the user, one of a manager's reps, or anyone (admin).
@@ -21,7 +20,7 @@ export const canEditDeal = (user, deal) => canAccessOwned(user, deal);
 
 // Returns { updates } or { error }. Unknown fields are rejected rather than silently
 // dropped, so a client bug (or a rep trying to set owner_id) fails loudly.
-export function buildDealUpdate(body, user, now = new Date()) {
+export function buildDealUpdate(body, user, now = new Date(), stages = DEFAULT_PIPELINE_STAGES) {
   const isManager = ['manager', 'admin'].includes(user.role);
   const allowed = isManager ? [...EDITABLE_FIELDS, ...MANAGER_ONLY_FIELDS] : EDITABLE_FIELDS;
 
@@ -52,8 +51,8 @@ export function buildDealUpdate(body, user, now = new Date()) {
 
   if ('stage' in body) {
     const stage = typeof body.stage === 'string' ? body.stage.trim().toLowerCase() : '';
-    if (!VALID_STAGES.includes(stage)) {
-      return { error: `stage must be one of: ${VALID_STAGES.join(', ')}` };
+    if (!stages.some((item) => item.id === stage)) {
+      return { error: `stage must be one of: ${stages.map((item) => item.id).join(', ')}` };
     }
     updates.stage = stage;
   }
@@ -61,6 +60,7 @@ export function buildDealUpdate(body, user, now = new Date()) {
   for (const field of ['contact_id', 'campaign_id', 'expected_close_date', 'owner_id']) {
     if (field in body) updates[field] = body[field] || null;
   }
+  if ('custom_fields' in body) updates.custom_fields = body.custom_fields;
 
   updates.updated_at = now.toISOString();
 

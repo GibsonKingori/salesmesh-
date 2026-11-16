@@ -70,6 +70,27 @@ describe('conversionFunnel', () => {
     const { transitions } = conversionFunnel(deals);
     expect(transitions.every((t) => t.expectedRate === null && !t.underperforming)).toBe(true);
   });
+
+  it('uses business-defined stage names and counts deals at each current stage', () => {
+    const pipeline = [
+      { id: 'request', label: 'Request received', type: 'open' },
+      { id: 'scheduled', label: 'Visit scheduled', type: 'open' },
+      { id: 'won', label: 'Service complete', type: 'won' },
+      { id: 'lost', label: 'Cancelled', type: 'lost' },
+    ];
+    const { stages, transitions } = conversionFunnel(
+      [deal({ stage: 'request' }), deal({ stage: 'scheduled' }), deal({ stage: 'lost' })],
+      { 'request->scheduled': 0.5 },
+      pipeline
+    );
+    expect(stages.map(({ label, count }) => [label, count])).toEqual([
+      ['Request received', 1],
+      ['Visit scheduled', 1],
+      ['Service complete', 0],
+      ['Cancelled', 1],
+    ]);
+    expect(transitions[0]).toMatchObject({ transition: 'request->scheduled', fromLabel: 'Request received', underperforming: false });
+  });
 });
 
 describe('pipelineVelocity', () => {

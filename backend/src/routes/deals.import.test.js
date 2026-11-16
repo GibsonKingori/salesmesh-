@@ -215,6 +215,50 @@ describe('POST /api/deals/import', () => {
     expect(claude.requests).toHaveLength(0);
   });
 
+  test('matches company-specific columns and saves their values with imported deals', async () => {
+    fake.tables.companies = [{
+      id: 'co-1',
+      deal_fields: [{ id: 'service-type', label: 'Service type', type: 'text', active: true }],
+    }];
+    const csv = 'Product,Amount,Status,Date,Service type\nOffice cleaning,500,lead,02/03/2026,Deep clean\n';
+    const checked = await upload(manager, csv, { dryRun: 1 });
+
+    expect(checked.status).toBe(200);
+    expect(checked.body.columns).toContainEqual({ header: 'Service type', field: 'custom:service-type' });
+    expect(claude.requests).toHaveLength(0);
+
+    const saved = await upload(manager, csv, {}, 'services.csv', { mapping: checked.body.mapping });
+    expect(saved.status).toBe(201);
+    expect(fake.tables.deals[0].custom_fields).toEqual({ 'service-type': 'Deep clean' });
+  });
+
+  test('AI can match unfamiliar headings to a company-specific field', async () => {
+    fake.tables.companies = [{
+      id: 'co-1',
+      deal_fields: [{ id: 'service-type', label: 'Service type', type: 'text', active: true }],
+    }];
+    claude.reply = {
+      columns: [
+        { index: 0, field: 'title' },
+        { index: 1, field: 'value' },
+        { index: 2, field: 'stage' },
+        { index: 3, field: 'created_date' },
+        { index: 4, field: 'custom:service-type' },
+      ],
+      stages: [],
+    };
+    const csv = 'Item,Cost,State,Started,Work requested\nOffice cleaning,500,lead,02/03/2026,Deep clean\n';
+    const checked = await upload(manager, csv, { dryRun: 1 });
+
+    expect(checked.body.columns[4]).toEqual({ header: 'Work requested', field: 'custom:service-type' });
+    expect(claude.requests[0].messages[0].content[0].text).toContain('custom:service-type: Service type (text)');
+
+    const saved = await upload(manager, csv, {}, 'services.csv', { mapping: checked.body.mapping });
+    expect(saved.status).toBe(201);
+    expect(fake.tables.deals[0].custom_fields).toEqual({ 'service-type': 'Deep clean' });
+    expect(claude.requests).toHaveLength(1);
+  });
+
   test("the user's reading of a status word wins, even over the built-in list", async () => {
     const csv = 'Item,Amount,Status\nSofa,100,Paid\nTable,200,Paid\n';
     const res = await upload(manager, csv, { dryRun: 1 }, 'deals.csv', {

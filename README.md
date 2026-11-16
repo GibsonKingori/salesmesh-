@@ -29,7 +29,7 @@ SalesMesh is a web-based sales pipeline and analytics platform built for SMEs in
 | --- | --- |
 | **Role-based dashboards** | Separate workspaces for Sales Representatives, Sales Managers and Administrators |
 | **Multi-company tenancy** | Each company is fully isolated and joined by invitation code. Managers see only the reps assigned to them |
-| **Pipeline management** | Kanban pipeline board, stage tracking, close dates, and a per-deal activity log. Contacts and campaigns are managed alongside deals |
+| **Pipeline management** | Kanban pipeline board, stage tracking, close dates, business-specific deal fields, and a per-deal activity log. Contacts and campaigns are managed alongside deals |
 | **Analytics** | KPIs, conversion funnel against targets, win rate, sales-cycle length, campaign ROI and revenue forecast, with CSV report export |
 | **Flexible data import** | CSV, Excel/ODS, delimited text, JSON, and AI-assisted reading of screenshots, photos and PDFs, all previewed before saving |
 | **Offline resilience** | A local PostgreSQL mirror takes over when Supabase is unreachable, and changes are synchronised automatically on reconnection |
@@ -60,6 +60,15 @@ SalesMesh is a web-based sales pipeline and analytics platform built for SMEs in
 
 1. Create a project in Supabase.
 2. Open **SQL Editor**, then paste and run `backend/schema.sql`.
+   For an existing project, run this repeat-safe migration in the SQL Editor:
+
+   ```sql
+   alter table companies add column if not exists pipeline_stages jsonb;
+   alter table companies add column if not exists deal_fields jsonb not null default '[]'::jsonb;
+   alter table deals add column if not exists custom_fields jsonb not null default '{}'::jsonb;
+   alter table deals drop constraint if exists deals_stage_check;
+   alter table funnel_benchmarks drop constraint if exists funnel_benchmarks_transition_check;
+   ```
 3. In **Project Settings → API**, copy the Project URL and the `service_role` key.
 
 ### 2. Start the API
@@ -146,6 +155,8 @@ Every import is validated and previewed before anything is saved. The preview sh
 
 An import can be taken back: **Undo import** right after saving, or **Deals → Past imports** later. Deleting an import removes every deal it created (with their activities) and the contacts it added that no other deal uses. Reps see their own imports, managers also their team's, and admins the whole company's. Deals imported before this feature existed aren't linked to an import, so they can only be deleted one at a time.
 
+Admins can add business-specific deal fields under **System configuration**. Fields can be text, number, date, or yes/no; active fields appear when adding or viewing deals. During import, SalesMesh can match spreadsheet columns to these fields by name or with AI, and the preview lets you correct the mapping. Hiding a field keeps its saved values.
+
 ### Designed for real-world records
 
 Businesses do not need to reformat their data to fit SalesMesh:
@@ -168,6 +179,9 @@ A deal's close date is recorded when it moves to won or lost, and later edits do
 ## Offline operation
 
 Supabase remains the source of truth. When `DATABASE_URL` is set, every write is also copied to a local PostgreSQL database with matching IDs.
+
+Admins can edit the company's pipeline stages under **System configuration**. Stage names and order are shared by the dashboard, deal list, import preview, and board; Won and Lost remain the final outcome stages.
+Admins can also configure company-specific deal fields there. These are stored on each deal and offered as import targets, while standard deal fields continue to drive shared reports and the pipeline.
 
 ```bash
 npm run db:setup    # create the local "salesmesh" database and tables

@@ -49,10 +49,10 @@ export default function ManagerOverviewPage() {
       ['Summary', 'Lost deals', descriptive.lostCount],
       ['Summary', 'Win rate (%)', winRate === null ? '' : Math.round(winRate * 100)],
       ['Summary', 'Pipeline velocity (KES/day)', Math.round(velocity.velocity || 0)],
-      ...diagnostic.stages.map((st) => ['Funnel', `Reached ${st.stage}`, st.reached]),
+      ...diagnostic.stages.map((st) => ['Funnel', `Reached ${st.label}`, st.reached]),
       ...diagnostic.transitions.map((t) => [
         'Conversion',
-        `${t.from} → ${t.to} (actual / target %)`,
+        `${t.fromLabel} → ${t.toLabel} (actual / target %)`,
         `${t.actualRate === null ? '' : Math.round(t.actualRate * 100)} / ${t.expectedRate === null ? '' : Math.round(t.expectedRate * 100)}`,
       ]),
       ...predictive.horizons.map((h) => ['Forecast', `Next ${h.days} days (KES)`, Math.round(h.value)]),
@@ -158,6 +158,7 @@ export default function ManagerOverviewPage() {
         subtitle="Open deals ranked by stage, urgency, and value"
         deals={topDeals}
         dealsPath="/manager/deals"
+        stages={diagnostic.stages.map((stage) => ({ id: stage.id, label: stage.label }))}
         ownerNames={ownerNames}
         emptyDescription="Add or import deals on the Deals page."
       />

@@ -37,7 +37,7 @@ const TABS = [
 ];
 
 const PAGE_SIZE = 25;
-const NO_FILTERS = { q: '', owner_id: '', campaign_id: '', import_id: '' };
+const NO_FILTERS = { q: '', owner_id: '', campaign_id: '', import_id: '', stage: '' };
 const EMPTY_LIST = { deals: [], total: 0, pages: 1 };
 
 const selectClass =
@@ -77,6 +77,7 @@ export default function DealsPage({ scope }) {
   const [filters, setFilters] = useState(NO_FILTERS);
   const [team, setTeam] = useState([]);
   const [campaigns, setCampaigns] = useState([]);
+  const [stages, setStages] = useState([]);
   // Only the newest request may update the lists, so slow responses to old searches are dropped
   const requestId = useRef(0);
   const [error, setError] = useState('');
@@ -133,6 +134,9 @@ export default function DealsPage({ scope }) {
   useEffect(() => {
     api.get('/campaigns').then((res) => setCampaigns(res.data.campaigns)).catch(() => {});
     if (isTeam) api.get('/users/team').then((res) => setTeam(res.data.users)).catch(() => {});
+    api.get('/settings/pipeline')
+      .then((res) => setStages(res.data.stages))
+      .catch((err) => setError(err.response?.data?.error || 'Could not load pipeline stages'));
   }, [isTeam]);
 
   const loadMore = async (kind) => {
@@ -231,8 +235,8 @@ export default function DealsPage({ scope }) {
               {view === 'board'
                 ? 'Drag a deal to another column to change its stage'
                 : tab === 'open'
-                ? 'Ranked by stage, urgency, and value — highest first'
-                : 'Won and lost, most recently closed first'}
+                ? 'Sorted by priority to help you choose what to work on next'
+                : 'Completed and unsuccessful deals, newest first'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -301,6 +305,17 @@ export default function DealsPage({ scope }) {
             className={`${selectClass} w-56 placeholder-faint`}
             aria-label="Search deals"
           />
+          <select
+            value={filters.stage}
+            onChange={(e) => setFilters({ ...filters, stage: e.target.value })}
+            className={`${selectClass} appearance-none`}
+            aria-label="Filter by stage"
+          >
+            <option value="" className="bg-surface">All stages</option>
+            {stages.map((stage) => (
+              <option key={stage.id} value={stage.id} className="bg-surface">{stage.label}</option>
+            ))}
+          </select>
           {isTeam && team.length > 0 && (
             <select
               value={filters.owner_id}
@@ -364,7 +379,7 @@ export default function DealsPage({ scope }) {
           </div>
         )}
 
-        {loading ? (
+        {loading || stages.length === 0 ? (
           <div className="px-5 py-10 text-center text-sm text-muted">Loading deals…</div>
         ) : view === 'board' ? (
           <>
@@ -372,12 +387,13 @@ export default function DealsPage({ scope }) {
               deals={[...priorityDeals, ...closedDeals]}
               scores={scores}
               savingId={savingId}
+              stages={stages}
               onMove={handleStageChange}
               onOpen={setSelectedDeal}
             />
             {closedDeals.length < lists.closed.total && (
               <p className="border-t border-fg/5 px-5 py-3 text-center text-xs text-subtle">
-                Won and Lost show the {closedDeals.length} most recently closed of {lists.closed.total}.{' '}
+                Closed stages show the {closedDeals.length} most recently updated of {lists.closed.total}.{' '}
                 <button
                   onClick={() => loadMore('closed')}
                   disabled={loadingMore === 'closed'}
@@ -424,6 +440,7 @@ export default function DealsPage({ scope }) {
                       <span className="text-sm text-muted">{currency(d.value)}</span>
                       <StageSelect
                         stage={d.stage}
+                        stages={stages}
                         disabled={savingId === d.id}
                         onChange={(stage) => handleStageChange(d, stage)}
                       />
@@ -440,7 +457,7 @@ export default function DealsPage({ scope }) {
           <div className="px-5 py-6">
             <EmptyState
               title="No closed deals yet"
-              description="Deals you mark as won or lost will show up here."
+              description="Deals you move to a completed or unsuccessful stage will show up here."
             />
           </div>
         ) : (
@@ -464,6 +481,7 @@ export default function DealsPage({ scope }) {
                     {/* Still editable, so a deal closed by mistake can be reopened */}
                     <StageSelect
                       stage={d.stage}
+                      stages={stages}
                       disabled={savingId === d.id}
                       onChange={(stage) => handleStageChange(d, stage)}
                     />
@@ -478,6 +496,7 @@ export default function DealsPage({ scope }) {
 
       {showAddDeal && (
         <AddDealModal
+          stages={stages}
           onClose={() => setShowAddDeal(false)}
           onCreated={() => {
             setShowAddDeal(false);
@@ -490,6 +509,7 @@ export default function DealsPage({ scope }) {
         <DealDrawer
           key={selectedDeal.id}
           deal={selectedDeal}
+          stages={stages}
           onClose={() => setSelectedDeal(null)}
           onChanged={() => fetchAll({ silent: true })}
           onDeleted={() => {
@@ -501,6 +521,7 @@ export default function DealsPage({ scope }) {
 
       {showImport && (
         <ImportCsvModal
+          stages={stages}
           onClose={() => setShowImport(false)}
           onImported={() => fetchAll()}
         />

@@ -51,7 +51,9 @@ export default function RepOverviewPage() {
   const { descriptive, diagnostic, attention, recentActivities } = analytics;
   const closedCount = descriptive.wonCount + descriptive.lostCount;
   const winRate = closedCount > 0 ? descriptive.wonCount / closedCount : null;
-  const openValue = ['lead', 'qualified', 'proposal', 'negotiation'].reduce((s, st) => s + descriptive.byStage[st].value, 0);
+  const openValue = descriptive.stages
+    .filter((stage) => stage.type === 'open')
+    .reduce((sum, stage) => sum + descriptive.byStage[stage.id].value, 0);
   const attentionDeals = [...attention.overdue, ...attention.closingSoon];
   const firstName = user?.name?.split(' ')[0] || '';
 
@@ -123,7 +125,7 @@ export default function RepOverviewPage() {
                     </div>
                     <div className="flex shrink-0 items-center gap-4">
                       <span className="hidden text-sm text-muted sm:inline">{currencyShort(d.value)}</span>
-                      <StageBadge stage={d.stage} />
+                      <StageBadge stage={d.stage} stages={descriptive.stages} />
                     </div>
                   </li>
                 );
@@ -137,6 +139,7 @@ export default function RepOverviewPage() {
           subtitle="Your open deals ranked by stage, urgency, and value"
           deals={focusDeals}
           dealsPath="/rep/deals"
+          stages={descriptive.stages}
           emptyDescription="Add or import deals on the Deals page."
         />
       </div>

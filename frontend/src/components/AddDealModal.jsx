@@ -1,24 +1,38 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api/client.js';
 import Modal from './Modal.jsx';
-
-const STAGES = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
+import DealCustomFields from './DealCustomFields.jsx';
 
 const inputClass =
   'w-full rounded-lg border border-fg/10 bg-fg/5 px-3 py-2 text-sm text-fg placeholder-faint outline-none transition-all focus:border-brand-400/60 focus:ring-2 focus:ring-brand-500/20';
 
-export default function AddDealModal({ onClose, onCreated }) {
+export default function AddDealModal({ onClose, onCreated, stages }) {
   const [title, setTitle] = useState('');
   const [value, setValue] = useState('');
-  const [stage, setStage] = useState('lead');
+  const [stage, setStage] = useState(stages[0]?.id || 'lead');
   const [campaignId, setCampaignId] = useState('');
   const [campaigns, setCampaigns] = useState([]);
+  const [dealFields, setDealFields] = useState([]);
+  const [customFields, setCustomFields] = useState({});
+  const [fieldsLoading, setFieldsLoading] = useState(true);
+  const [fieldsLoadError, setFieldsLoadError] = useState(false);
   const [expectedCloseDate, setExpectedCloseDate] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     api.get('/campaigns').then((res) => setCampaigns(res.data.campaigns)).catch(() => {});
+    api.get('/settings/deal-fields')
+      .then(({ data }) => {
+        const activeFields = data.fields.filter((field) => field.active !== false);
+        setDealFields(activeFields);
+        setCustomFields(Object.fromEntries(activeFields.map((field) => [field.id, field.type === 'boolean' ? false : ''])));
+      })
+      .catch((err) => {
+        setFieldsLoadError(true);
+        setError(err.response?.data?.error || 'Could not load business fields');
+      })
+      .finally(() => setFieldsLoading(false));
   }, []);
 
   const handleSubmit = async (e) => {
@@ -32,6 +46,7 @@ export default function AddDealModal({ onClose, onCreated }) {
         stage,
         campaign_id: campaignId || null,
         expected_close_date: expectedCloseDate || null,
+        custom_fields: customFields,
       });
       onCreated(data.deal);
     } catch (err) {
@@ -79,9 +94,9 @@ export default function AddDealModal({ onClose, onCreated }) {
           <div>
             <label className="mb-1 block text-sm font-medium text-fg-soft">Stage</label>
             <select value={stage} onChange={(e) => setStage(e.target.value)} className={`${inputClass} appearance-none`}>
-              {STAGES.map((s) => (
-                <option key={s} value={s} className="bg-surface capitalize">
-                  {s}
+              {stages.map((s) => (
+                <option key={s.id} value={s.id} className="bg-surface">
+                  {s.label}
                 </option>
               ))}
             </select>
@@ -118,9 +133,16 @@ export default function AddDealModal({ onClose, onCreated }) {
           />
         </div>
 
+        <DealCustomFields
+          fields={dealFields}
+          values={customFields}
+          disabled={loading}
+          onChange={(id, value) => setCustomFields((prev) => ({ ...prev, [id]: value }))}
+        />
+
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || fieldsLoading || fieldsLoadError}
           className="w-full rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? 'Saving…' : 'Add deal'}

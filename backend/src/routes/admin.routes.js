@@ -6,7 +6,8 @@ import { MAX_FAILED_LOGINS, MIN_PASSWORD_LENGTH } from './auth.routes.js';
 import { recordAudit } from '../services/audit.js';
 import { fetchAll } from '../services/fetchAll.js';
 import { createResetToken, RESET_TOKEN_MINUTES } from '../services/passwordReset.js';
-import { VALID_STAGES, closedAtForStageChange } from '../services/dealUpdates.js';
+import { closedAtForStageChange } from '../services/dealUpdates.js';
+import { loadPipelineStages } from '../services/pipelineStages.js';
 import { scopeCompany, sameCompany } from '../services/access.js';
 import { findCompany, regenerateJoinCode } from '../services/companies.js';
 
@@ -192,8 +193,14 @@ router.post('/users/:id/deals', async (req, res) => {
   if (!title?.trim() || value === undefined || value === '' || Number.isNaN(amount) || amount < 0) {
     return res.status(400).json({ error: 'title and a value of 0 or more are required' });
   }
-  if (!VALID_STAGES.includes(stage)) {
-    return res.status(400).json({ error: `stage must be one of: ${VALID_STAGES.join(', ')}` });
+  let stages;
+  try {
+    stages = await loadPipelineStages(supabase, req.user.company_id);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  if (!stages.some((item) => item.id === stage)) {
+    return res.status(400).json({ error: `stage must be one of: ${stages.map((item) => item.id).join(', ')}` });
   }
 
   try {
@@ -215,7 +222,7 @@ router.post('/users/:id/deals', async (req, res) => {
           expected_close_date: expected_close_date || null,
           campaign_id: campaign_id || null,
           owner_id: owner.id,
-          closed_at: closedAtForStageChange(null, stage) ?? null,
+          closed_at: closedAtForStageChange(null, stage, new Date(), stages) ?? null,
         },
       ])
       .select()

@@ -50,6 +50,7 @@ create table if not exists deals (
   owner_id uuid references users(id) on delete set null,
   expected_close_date date,
   priority_score numeric(5,2), -- populated by Iteration 4 prescriptive scoring
+  custom_fields jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -153,8 +154,17 @@ create table if not exists companies (
   id uuid primary key default uuid_generate_v4(),
   name text not null,
   join_code text unique not null,
+  pipeline_stages jsonb,
+  deal_fields jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
+alter table companies add column if not exists pipeline_stages jsonb;
+alter table companies add column if not exists deal_fields jsonb not null default '[]'::jsonb;
+alter table deals add column if not exists custom_fields jsonb not null default '{}'::jsonb;
+
+-- Stage ids are configured per company, so deals are not limited to one industry's workflow.
+alter table deals drop constraint if exists deals_stage_check;
+alter table funnel_benchmarks drop constraint if exists funnel_benchmarks_transition_check;
 
 alter table users add column if not exists company_id uuid references companies(id) on delete cascade;
 alter table users add column if not exists manager_id uuid references users(id) on delete set null;

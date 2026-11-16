@@ -1,0 +1,8 @@
+title,value,stage,created_date,closed_date,expected_close_date,campaign,contact_name,company,contact_email,contact_phone,owner
+Birthday lunch for Amina,12000,New,13/11/2026,,25/11/2026,,Amina Njeri,,amina@example.com,,
+Office lunch for Kito Ltd,25000,New,14/11/2026,,27/11/2026,,Peter Kamau,Kito Ltd,peter@example.com,,
+Graduation catering for Neema,40000,Under review,11/11/2026,,22/11/2026,,Neema Otieno,,neema@example.com,,
+Staff meeting refreshments,18000,Plan shared,08/11/2026,,19/11/2026,,David Mwangi,Jenga Works,david@example.com,,
+Wedding catering for Malik,75000,Waiting for decision,05/11/2026,,20/11/2026,,Malik Hassan,,malik@example.com,,
+Training lunch for Soko Ltd,30000,Completed,01/11/2026,04/11/2026,,,Grace Achieng,Soko Ltd,grace@example.com,,
+Family event for Asha,15000,Not proceeding,28/10/2026,02/11/2026,,,Asha Wanjiku,,asha@example.com,,

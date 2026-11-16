@@ -15,8 +15,6 @@ import { ROLE_NAMES } from '../../lib/audit.js';
 import { currency, currencyShort, formatDate } from '../../lib/format.js';
 import { StatusPill } from './AccountsPage.jsx';
 
-const STAGES = ['lead', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
-
 const inputClass =
   'w-full rounded-lg border border-fg/10 bg-fg/5 px-3 py-2 text-sm text-fg placeholder-faint outline-none transition-all focus:border-brand-400/50 focus:ring-2 focus:ring-brand-500/15';
 const selectClass =
@@ -39,8 +37,8 @@ const FormError = ({ error }) =>
     <div className="rounded-md border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{error}</div>
   ) : null;
 
-function AddDealModal({ owner, campaigns, onClose, onCreated }) {
-  const [form, setForm] = useState({ title: '', value: '', stage: 'lead', expected_close_date: '', campaign_id: '' });
+function AddDealModal({ owner, campaigns, stages, onClose, onCreated }) {
+  const [form, setForm] = useState({ title: '', value: '', stage: stages[0]?.id || 'lead', expected_close_date: '', campaign_id: '' });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
@@ -71,9 +69,9 @@ function AddDealModal({ owner, campaigns, onClose, onCreated }) {
           </Field>
           <Field label="Stage">
             <select value={form.stage} onChange={set('stage')} className={`${inputClass} capitalize`}>
-              {STAGES.map((s) => (
-                <option key={s} value={s} className="bg-surface">
-                  {s}
+              {stages.map((s) => (
+                <option key={s.id} value={s.id} className="bg-surface">
+                  {s.label}
                 </option>
               ))}
             </select>
@@ -165,6 +163,7 @@ export default function AccountDetailPage() {
   const { user: me } = useAuth();
   const [data, setData] = useState(null);
   const [allCampaigns, setAllCampaigns] = useState([]);
+  const [stages, setStages] = useState([]);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
@@ -187,6 +186,9 @@ export default function AccountDetailPage() {
       .get('/campaigns')
       .then((res) => setAllCampaigns(res.data.campaigns))
       .catch(() => {});
+    api.get('/settings/pipeline')
+      .then((res) => setStages(res.data.stages))
+      .catch((err) => setError(err.response?.data?.error || 'Could not load pipeline stages'));
   }, [load]);
 
   const act = async (action, success) => {
@@ -354,7 +356,7 @@ export default function AccountDetailPage() {
                     <tr key={d.id} className="hover:bg-fg/[0.03]">
                       <td className="px-5 py-3 font-medium text-fg">{d.title}</td>
                       <td className="px-3 py-3">
-                        <StageBadge stage={d.stage} />
+                        <StageBadge stage={d.stage} stages={stages} />
                       </td>
                       <td className="px-3 py-3 text-right tabular-nums text-muted">{currency(d.value)}</td>
                       <td className="px-3 py-3 text-muted">{d.campaign_id ? campaignName[d.campaign_id] || '—' : '—'}</td>
@@ -438,6 +440,7 @@ export default function AccountDetailPage() {
         <AddDealModal
           owner={user}
           campaigns={allCampaigns}
+          stages={stages}
           onClose={() => setModal(null)}
           onCreated={() => {
             setModal(null);

@@ -158,6 +158,64 @@ describe('companies cannot see each other', () => {
     expect(await rate(mgr1)).toBe(0.4);
     expect(await rate(dukaMgr)).toBeNull();
   });
+
+  test('pipeline stages are configurable per company and cannot be removed while in use', async () => {
+    const stages = [
+      { id: 'lead', label: 'New enquiry', type: 'open' },
+      { id: 'appointment', label: 'Appointment booked', type: 'open' },
+      { id: 'won', label: 'Completed', type: 'won' },
+      { id: 'lost', label: 'Cancelled', type: 'lost' },
+    ];
+    const saved = await request(app).put('/api/settings/pipeline').set('Authorization', tokenFor(acmeAdmin)).send({ stages });
+    expect(saved.status).toBe(200);
+    expect((await as(mgr1).get('/api/settings/pipeline')).body.stages).toEqual(stages);
+    expect((await as(dukaMgr).get('/api/settings/pipeline')).body.stages).not.toEqual(stages);
+
+    const created = await as(rep1).post('/api/deals', { title: 'Home visit', value: 250, stage: 'appointment' });
+    expect(created.status).toBe(201);
+    expect(created.body.deal.stage).toBe('appointment');
+
+    const withoutUsedStage = stages.filter((stage) => stage.id !== 'appointment');
+    const rejected = await request(app).put('/api/settings/pipeline').set('Authorization', tokenFor(acmeAdmin)).send({ stages: withoutUsedStage });
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.error).toMatch(/Move deals out of Appointment booked/);
+  });
+
+  test('custom deal fields are company-specific, type-checked, and available on deals', async () => {
+    const fields = [
+      { id: 'service-type', label: 'Service type', type: 'text', active: true },
+      { id: 'visits', label: 'Number of visits', type: 'number', active: true },
+    ];
+    const saved = await request(app)
+      .put('/api/settings/deal-fields')
+      .set('Authorization', tokenFor(acmeAdmin))
+      .send({ fields });
+    expect(saved.status).toBe(200);
+    expect((await as(mgr1).get('/api/settings/deal-fields')).body.fields).toEqual(fields);
+    expect((await as(dukaMgr).get('/api/settings/deal-fields')).body.fields).toEqual([]);
+    expect((await request(app).put('/api/settings/deal-fields').set('Authorization', tokenFor(mgr1)).send({ fields })).status).toBe(403);
+
+    const created = await as(rep1).post('/api/deals', {
+      title: 'Office cleaning',
+      value: 500,
+      stage: 'lead',
+      custom_fields: { 'service-type': 'Deep clean', visits: '2' },
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.deal.custom_fields).toEqual({ 'service-type': 'Deep clean', visits: 2 });
+
+    const edited = await as(rep1).patch(`/api/deals/${created.body.deal.id}`, {
+      custom_fields: { 'service-type': '  Regular clean ', visits: 3 },
+    });
+    expect(edited.status).toBe(200);
+    expect(edited.body.deal.custom_fields).toEqual({ 'service-type': 'Regular clean', visits: 3 });
+    expect((await as(rep1).post('/api/deals', {
+      title: 'Invalid field',
+      value: 100,
+      stage: 'lead',
+      custom_fields: { unknown: 'value' },
+    })).status).toBe(400);
+  });
 });
 
 describe('managers only see their own representatives', () => {
