@@ -1,7 +1,7 @@
 title,value,stage,created_date,closed_date,expected_close_date,campaign,contact_name,company,contact_email,contact_phone,owner
 Bridal makeup package,28000,New,14/11/2026,,30/11/2026,,Nia Wanjiru,,nia@example.com,,
 Monthly hair styling plan,12000,Under review,10/11/2026,,26/11/2026,,Zuri Achieng,,zuri@example.com,,
-Graduation braids booking,8500,Plan shared,06/11/2026,,22/11/2026,,Talia Njeri,,talia@example.com,,
+Graduation braids booking,8500,Offer sent,06/11/2026,,22/11/2026,,Talia Njeri,,talia@example.com,,
 Family spa package,18000,Waiting for decision,02/11/2026,,21/11/2026,,Imani Otieno,,imani@example.com,,
 Weekend haircut package,6000,Completed,24/10/2026,01/11/2026,,,Asha Kamau,,asha@example.com,,
 Event styling booking,15000,Not proceeding,19/10/2026,27/10/2026,,,Malaika Wambui,,malaika@example.com,,

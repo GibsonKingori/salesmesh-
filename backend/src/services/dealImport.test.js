@@ -68,6 +68,8 @@ describe('parseStage', () => {
   test('maps CRM and everyday wording', () => {
     expect(parseStage('Closed Won')).toBe('won');
     expect(parseStage('quote sent')).toBe('proposal');
+    expect(parseStage('Plan shared')).toBe('proposal');
+    expect(parseStage('Offer sent')).toBe('proposal');
     expect(parseStage('Cancelled')).toBe('lost');
     expect(parseStage('maybe')).toBeNull();
   });

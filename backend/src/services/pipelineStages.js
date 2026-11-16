@@ -1,7 +1,7 @@
 export const DEFAULT_PIPELINE_STAGES = [
   { id: 'lead', label: 'New', type: 'open' },
   { id: 'qualified', label: 'Under review', type: 'open' },
-  { id: 'proposal', label: 'Plan shared', type: 'open' },
+  { id: 'proposal', label: 'Offer sent', type: 'open' },
   { id: 'negotiation', label: 'Waiting for decision', type: 'open' },
   { id: 'won', label: 'Completed', type: 'won' },
   { id: 'lost', label: 'Not proceeding', type: 'lost' },
@@ -10,7 +10,12 @@ export const DEFAULT_PIPELINE_STAGES = [
 export async function loadPipelineStages(supabase, companyId) {
   const { data, error } = await supabase.from('companies').select('pipeline_stages').eq('id', companyId).maybeSingle();
   if (error) throw error;
-  return Array.isArray(data?.pipeline_stages?.stages) ? data.pipeline_stages.stages : DEFAULT_PIPELINE_STAGES;
+  if (!Array.isArray(data?.pipeline_stages?.stages)) return DEFAULT_PIPELINE_STAGES;
+  return data.pipeline_stages.stages.map((stage) =>
+    stage.id === 'proposal' && typeof stage.label === 'string' && stage.label.trim().toLowerCase() === 'plan shared'
+      ? { ...stage, label: 'Offer sent' }
+      : stage
+  );
 }
 
 export function validatePipelineStages(value) {

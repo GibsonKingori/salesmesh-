@@ -1,4 +1,35 @@
-import { DEFAULT_PIPELINE_STAGES, validatePipelineStages } from './pipelineStages.js';
+import { DEFAULT_PIPELINE_STAGES, loadPipelineStages, validatePipelineStages } from './pipelineStages.js';
+import { createFakeSupabase } from '../test/fakeSupabase.js';
+
+describe('loadPipelineStages', () => {
+  test('shows the clearer label for companies with the previous default without changing stage IDs', async () => {
+    const savedStages = DEFAULT_PIPELINE_STAGES.map((stage) =>
+      stage.id === 'proposal' ? { ...stage, label: 'Plan shared' } : stage
+    );
+    const supabase = createFakeSupabase({
+      companies: [{ id: 'co-1', pipeline_stages: { stages: savedStages } }],
+    });
+
+    const stages = await loadPipelineStages(supabase, 'co-1');
+
+    expect(stages.find((stage) => stage.id === 'proposal')).toEqual({
+      id: 'proposal',
+      label: 'Offer sent',
+      type: 'open',
+    });
+    expect(supabase.tables.companies[0].pipeline_stages.stages.find((stage) => stage.id === 'proposal').label).toBe('Plan shared');
+  });
+
+  test('keeps custom labels for the proposal stage', async () => {
+    const supabase = createFakeSupabase({
+      companies: [{ id: 'co-1', pipeline_stages: { stages: [{ id: 'proposal', label: 'Estimate sent', type: 'open' }] } }],
+    });
+
+    const stages = await loadPipelineStages(supabase, 'co-1');
+
+    expect(stages[0].label).toBe('Estimate sent');
+  });
+});
 
 describe('validatePipelineStages', () => {
   test('accepts custom in-progress stages before the fixed outcome stages', () => {
