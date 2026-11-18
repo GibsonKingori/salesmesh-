@@ -140,11 +140,11 @@ export default function LoginPage() {
               Built for Kenyan SMEs
             </span>
             <h1 className="font-display text-4xl font-bold leading-tight tracking-tight text-fg">
-              Sales analytics for the <span className="text-gradient">next generation</span> of Kenyan business.
+              Sales records and pipeline tracking for <span className="text-gradient">Kenyan SMEs.</span>
             </h1>
             <p className="text-sm leading-relaxed text-fg-soft">
-              Track deals, manage your pipeline, and see where every campaign shilling goes — all in one
-              dashboard your whole team can trust.
+              Record each sales opportunity as a deal, follow it through your pipeline, log customer activity, and
+              review won and lost sales — all in one place.
             </p>
             <ul className="space-y-3 pt-2 [@media(max-height:640px)]:hidden">
               {FEATURES.map((f) => (

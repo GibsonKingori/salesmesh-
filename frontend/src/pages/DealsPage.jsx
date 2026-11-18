@@ -225,6 +225,9 @@ export default function DealsPage({ scope }) {
 
   return (
     <DashboardShell title={isTeam ? 'Team deals' : 'My deals'}>
+      <p className="mb-4 text-sm text-muted">
+        Record sales opportunities as deals, track each stage in the pipeline, and keep won and lost deals for reference.
+      </p>
       <div className="rounded-2xl border border-fg/10 bg-surface shadow-sm shadow-ink-900/5">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-fg/10 px-5 py-4">
           <div>
