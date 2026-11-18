@@ -65,19 +65,19 @@ export default function RepOverviewPage() {
         </h1>
         <p className="text-sm text-muted">
           {attention.overdue.length > 0
-            ? `${attention.overdue.length} of your deals ${attention.overdue.length === 1 ? 'is' : 'are'} past the expected close date.`
+            ? `${attention.overdue.length} of your sales records ${attention.overdue.length === 1 ? 'is' : 'are'} past the expected close date.`
             : attention.closingSoon.length > 0
-              ? `${attention.closingSoon.length} deal${attention.closingSoon.length === 1 ? '' : 's'} due to close in the next ${attention.soonDays} days.`
+              ? `${attention.closingSoon.length} sales record${attention.closingSoon.length === 1 ? '' : 's'} due to close in the next ${attention.soonDays} days.`
               : 'Nothing overdue. Here’s where your pipeline stands.'}
         </p>
       </div>
 
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="My open pipeline"
+          label="Open pipeline value"
           value={currencyShort(openValue)}
           fullValue={currency(openValue)}
-          hint={`${descriptive.openCount} open deal${descriptive.openCount === 1 ? '' : 's'}`}
+          hint={`${descriptive.openCount} open sales record${descriptive.openCount === 1 ? '' : 's'} · potential sales`}
           icon={ICONS.pipeline}
         />
         <StatCard
@@ -95,9 +95,11 @@ export default function RepOverviewPage() {
           tone="gold"
         />
         <StatCard
-          label="My win rate"
+          label="Success rate"
           value={percent(winRate)}
-          hint={closedCount ? `${descriptive.wonCount} won · ${currencyShort(descriptive.wonValue)}` : 'No closed deals yet'}
+          hint={closedCount
+            ? `${descriptive.wonCount} won of ${closedCount} closed records · ${currencyShort(descriptive.wonValue)} in won sales`
+            : 'No completed sales records yet'}
           icon={ICONS.won}
           tone="emerald"
         />
@@ -110,7 +112,7 @@ export default function RepOverviewPage() {
           action={attentionDeals.length > ATTENTION_COUNT && <CardLink to="/rep/deals">See all {attentionDeals.length} →</CardLink>}
         >
           {attentionDeals.length === 0 ? (
-            <EmptyState title="You’re on track" description="No open deals are overdue or due to close soon." />
+            <EmptyState title="You’re on track" description="No open sales records are overdue or due to close soon." />
           ) : (
             <ul className="-mx-5 -mb-5 divide-y divide-fg/5">
               {attentionDeals.slice(0, ATTENTION_COUNT).map((d) => {
@@ -136,11 +138,11 @@ export default function RepOverviewPage() {
 
         <PriorityDealsCard
           title="Today’s focus"
-          subtitle="Your open deals ranked by stage, urgency, and value"
+          subtitle="Your open sales records ranked by stage, urgency, and value"
           deals={focusDeals}
           dealsPath="/rep/deals"
           stages={descriptive.stages}
-          emptyDescription="Add or import deals on the Deals page."
+          emptyDescription="Add or import sales records on the Sales records page."
         />
       </div>
 
@@ -149,7 +151,7 @@ export default function RepOverviewPage() {
 
         <Card title="My recent activity" subtitle="Calls, emails, meetings and notes you’ve logged">
           {recentActivities.length === 0 ? (
-            <EmptyState title="No activity logged yet" description="Open a deal on the Deals page to log a call, email, meeting or note." />
+            <EmptyState title="No activity logged yet" description="Open a sales record to log a call, email, meeting or note." />
           ) : (
             <ul className="-mx-5 -mb-5 divide-y divide-fg/5">
               {recentActivities.map((a) => (
@@ -159,7 +161,7 @@ export default function RepOverviewPage() {
                       <span className="mr-2 rounded bg-fg/5 px-1.5 py-0.5 text-xs font-semibold text-fg-soft">
                         {ACTIVITY_LABELS[a.type] || a.type}
                       </span>
-                      {a.deal_title || 'Deleted deal'}
+                      {a.deal_title || 'Deleted sales record'}
                     </p>
                     <span className="shrink-0 text-xs text-subtle">{formatDate(a.created_at)}</span>
                   </div>

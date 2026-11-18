@@ -23,10 +23,10 @@ const STATUS_FILTERS = [
 
 // What each role can do, following the Chapter 4 use case diagram
 const PERMISSIONS = [
-  { label: 'View dashboard & KPIs', rep: 'Own deals', manager: 'Their team', admin: '—' },
-  { label: 'Manage deals & log activities', rep: 'Own deals', manager: 'Their team’s deals', admin: 'Any account' },
+  { label: 'View dashboard & KPIs', rep: 'Own sales records', manager: 'Their team', admin: '—' },
+  { label: 'Manage sales records & log activities', rep: 'Own sales records', manager: 'Their team’s records', admin: 'Any account' },
   { label: 'Pipeline analytics', rep: 'Own pipeline', manager: 'Their team', admin: '—' },
-  { label: 'Campaign analytics', rep: 'Own results', manager: 'Budget, CPA, ROI (team’s deals)', admin: 'Any account' },
+  { label: 'Campaign analytics', rep: 'Own results', manager: 'Budget, CPA, ROI (team’s sales records)', admin: 'Any account' },
   { label: 'Export reports', rep: '—', manager: 'Yes', admin: '—' },
   { label: 'Manage accounts, roles, permissions & teams', rep: '—', manager: '—', admin: 'Yes' },
   { label: 'System configuration', rep: '—', manager: 'View targets', admin: 'Yes' },
@@ -61,7 +61,7 @@ export const SearchIcon = () => (
 );
 
 // Admin "Manage Roles & Permissions": find any account, change its role, enable or disable it,
-// or open it to look after its deals and campaigns.
+// or open it to look after its sales records and campaigns.
 export default function AccountsPage() {
   const { user: me } = useAuth();
   const [params, setParams] = useSearchParams();

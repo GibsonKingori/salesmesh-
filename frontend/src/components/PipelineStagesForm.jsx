@@ -78,7 +78,7 @@ export default function PipelineStagesForm() {
       <div className="border-b border-fg/10 px-5 py-4">
         <h2 className="font-display font-semibold text-fg">Your business stages</h2>
         <p className="mt-0.5 text-xs text-subtle">
-          Rename, add, or reorder in-progress stages to match your workflow. Completed and unsuccessful stages stay last so reports remain accurate. Move deals out before removing a stage.
+          These are general starting stages; rename, add, or reorder them to match your workflow. Sale completed and cancelled stages stay last so reports remain accurate. Move sales records out before removing a stage.
         </p>
       </div>
       {loading ? (
@@ -94,14 +94,14 @@ export default function PipelineStagesForm() {
                 <li key={stage.id} className="flex items-center gap-2 py-2.5">
                   <span className="w-6 shrink-0 text-xs tabular-nums text-subtle">{index + 1}.</span>
                   <input
-                    aria-label={`${stage.type === 'won' ? 'Completed' : stage.type === 'lost' ? 'Unsuccessful' : 'In progress'} stage name`}
+                    aria-label={`${stage.type === 'won' ? 'Sale completed' : stage.type === 'lost' ? 'Cancelled' : 'In progress'} stage name`}
                     value={stage.label}
                     maxLength={40}
                     onChange={(event) => updateStage(index, { label: event.target.value })}
                     className={fieldClass}
                   />
                   <span className="hidden shrink-0 text-xs text-subtle sm:inline">
-                    {isOpen ? 'In progress' : stage.type === 'won' ? 'Completed' : 'Unsuccessful'}
+                    {isOpen ? 'In progress' : stage.type === 'won' ? 'Sale completed' : 'Cancelled'}
                   </span>
                   {isOpen ? (
                     <>

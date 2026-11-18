@@ -10,7 +10,7 @@ export default function StageSelect({ stage, stages, onChange, disabled }) {
         value={stage}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        aria-label="Deal stage"
+        aria-label="Sales record stage"
         className={`cursor-pointer appearance-none rounded-full py-1 pl-2.5 pr-7 text-xs font-medium capitalize outline-none ring-1 ring-inset transition-opacity focus:ring-2 focus:ring-brand-500/40 disabled:cursor-wait disabled:opacity-50 ${style}`}
       >
         {stages.map((s) => (

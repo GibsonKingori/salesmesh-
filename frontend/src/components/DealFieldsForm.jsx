@@ -65,9 +65,9 @@ export default function DealFieldsForm() {
   return (
     <form onSubmit={handleSave} className="rounded-2xl border border-fg/10 bg-surface shadow-sm shadow-ink-900/5">
       <div className="border-b border-fg/10 px-5 py-4">
-        <h2 className="font-display font-semibold text-fg">Business-specific deal fields</h2>
+        <h2 className="font-display font-semibold text-fg">Custom sales record fields</h2>
         <p className="mt-0.5 text-xs text-subtle">
-          Add details your business tracks, such as service type, location, or renewal date. They appear on deal forms and can be matched during imports. Hidden fields and saved values are kept.
+          Add details your business tracks, such as service type, location, or renewal date. They appear on sales record forms and can be matched during imports. Hidden fields and saved values are kept.
         </p>
       </div>
       {loading ? (
@@ -104,7 +104,7 @@ export default function DealFieldsForm() {
               onChange={(event) => setAddLabel(event.target.value)}
               maxLength={50}
               placeholder="Add a field, e.g. Service type"
-              aria-label="New deal field name"
+              aria-label="New sales record field name"
               className={fieldClass}
             />
             <select value={addType} onChange={(event) => setAddType(event.target.value)} className={`${fieldClass} appearance-none`}>

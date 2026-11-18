@@ -43,7 +43,7 @@ export default function DeleteImportWarning({ fileName, deals, contacts, value, 
 
         <div className="mt-2 flex flex-wrap gap-2 text-xs">
           <span className="inline-flex items-center rounded-md bg-red-500/15 px-2.5 py-1 font-semibold text-red-800 dark:text-red-200">
-            💼 {plural(deals, 'deal', 'deals')}
+            💼 {plural(deals, 'sales record', 'sales records')}
           </span>
           {value != null && (
             <span className="inline-flex items-center rounded-md bg-red-500/15 px-2.5 py-1 font-semibold text-red-800 dark:text-red-200">
@@ -59,7 +59,7 @@ export default function DeleteImportWarning({ fileName, deals, contacts, value, 
       </div>
 
       <p className="mt-2 text-xs font-medium text-red-800/90 dark:text-red-200/90">
-        Deleting this import will permanently erase all associated deals and activities from your pipeline, forecasts, and dashboards.
+        Deleting this import will permanently erase all associated sales records and activities from your pipeline, forecasts, and dashboards.
       </p>
 
       {/* Confirmation safeguard checkbox */}
@@ -90,7 +90,7 @@ export default function DeleteImportWarning({ fileName, deals, contacts, value, 
           disabled={busy || !confirmed}
           className="rounded-lg bg-red-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-red-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-red-600"
         >
-          {busy ? 'Deleting…' : `Permanently Delete ${plural(deals, 'deal', 'deals')}`}
+          {busy ? 'Deleting…' : `Permanently Delete ${plural(deals, 'sales record', 'sales records')}`}
         </button>
       </div>
     </div>

@@ -9,9 +9,9 @@ import api from '../api/client.js';
 import ThemeToggle from '../components/ThemeToggle.jsx';
 
 const FEATURES = [
-  { title: 'Prioritised pipeline', text: 'Every open deal scored, so your team knows who to call next.' },
-  { title: 'Campaign ROI', text: 'See what each campaign shilling brings back in won deals.' },
-  { title: 'Revenue forecast', text: 'A forward view built from the deals you actually close.' },
+  { title: 'Prioritised pipeline', text: 'Open sales records ranked to help your team decide what to follow up next.' },
+  { title: 'Campaign ROI', text: 'See what each campaign shilling brings back in completed sales.' },
+  { title: 'Revenue forecast', text: 'A forward view based on sales records marked as won.' },
 ];
 
 // Joining needs the company's join code (from its admin) and makes you a Sales Rep;
@@ -143,8 +143,8 @@ export default function LoginPage() {
               Sales records and pipeline tracking for <span className="text-gradient">Kenyan SMEs.</span>
             </h1>
             <p className="text-sm leading-relaxed text-fg-soft">
-              Record each sales opportunity as a deal, follow it through your pipeline, log customer activity, and
-              review won and lost sales — all in one place.
+              Record each sale or customer enquiry, track its status, log follow-up activity, and review completed
+              or unsuccessful sales — all in one place.
             </p>
             <ul className="space-y-3 pt-2 [@media(max-height:640px)]:hidden">
               {FEATURES.map((f) => (
@@ -174,7 +174,7 @@ export default function LoginPage() {
                 {isRegister ? 'Create your account' : 'Welcome back'}
               </h2>
               <p className="mt-1 text-sm text-muted">
-                {isRegister ? 'Set up access for your sales team.' : 'Log in to see your pipeline and deals.'}
+                {isRegister ? 'Set up access for your sales team.' : 'Log in to see your sales records and pipeline.'}
               </p>
             </div>
 

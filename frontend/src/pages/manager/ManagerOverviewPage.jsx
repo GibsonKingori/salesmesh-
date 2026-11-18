@@ -41,12 +41,12 @@ export default function ManagerOverviewPage() {
 
   const exportReport = () => {
     const rows = [
-      ['Summary', 'Pipeline value (KES)', descriptive.totalValue],
-      ['Summary', 'Total deals', descriptive.totalDeals],
-      ['Summary', 'Open deals', descriptive.openCount],
-      ['Summary', 'Won value (KES)', descriptive.wonValue],
-      ['Summary', 'Won deals', descriptive.wonCount],
-      ['Summary', 'Lost deals', descriptive.lostCount],
+      ['Summary', 'Total value of sales records (KES)', descriptive.totalValue],
+      ['Summary', 'Total sales records', descriptive.totalDeals],
+      ['Summary', 'Open sales records', descriptive.openCount],
+      ['Summary', 'Completed sales value (KES)', descriptive.wonValue],
+      ['Summary', 'Completed sales records', descriptive.wonCount],
+      ['Summary', 'Unsuccessful sales records', descriptive.lostCount],
       ['Summary', 'Win rate (%)', winRate === null ? '' : Math.round(winRate * 100)],
       ['Summary', 'Pipeline velocity (KES/day)', Math.round(velocity.velocity || 0)],
       ...diagnostic.stages.map((st) => ['Funnel', `Reached ${st.label}`, st.reached]),
@@ -57,11 +57,11 @@ export default function ManagerOverviewPage() {
       ]),
       ...predictive.horizons.map((h) => ['Forecast', `Next ${h.days} days (KES)`, Math.round(h.value)]),
       ...team.flatMap((r) => [
-        ['Team', `${r.name}: open deals / open value (KES)`, `${r.openCount} / ${r.openValue}`],
-        ['Team', `${r.name}: won deals / won value (KES)`, `${r.wonCount} / ${r.wonValue}`],
-        ['Team', `${r.name}: win rate (%)`, r.winRate === null ? '' : Math.round(r.winRate * 100)],
+        ['Team', `${r.name}: open sales records / open value (KES)`, `${r.openCount} / ${r.openValue}`],
+        ['Team', `${r.name}: completed sales records / won value (KES)`, `${r.wonCount} / ${r.wonValue}`],
+        ['Team', `${r.name}: success rate (%)`, r.winRate === null ? '' : Math.round(r.winRate * 100)],
       ]),
-      ...topDeals.map((d) => ['Top priority deal', d.title, d.value]),
+      ...topDeals.map((d) => ['Top priority sales record', d.title, d.value]),
     ];
     const today = new Date().toISOString().slice(0, 10);
     downloadCsv(`salesmesh-sales-report-${today}.csv`, ['Section', 'Metric', 'Value'], rows);
@@ -74,7 +74,7 @@ export default function ManagerOverviewPage() {
           <h1 className="font-display text-xl font-bold text-fg">My team</h1>
           <p className="text-sm text-muted">
             {reps.length
-              ? `${reps.length} representative${reps.length === 1 ? '' : 's'} · ${activeReps} with open deals`
+              ? `${reps.length} representative${reps.length === 1 ? '' : 's'} · ${activeReps} with open sales records`
               : 'No representatives are assigned to you yet'}
           </p>
         </div>
@@ -88,44 +88,44 @@ export default function ManagerOverviewPage() {
 
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Team pipeline"
+          label="Total value of sales records"
           value={currencyShort(descriptive.totalValue)}
           fullValue={currency(descriptive.totalValue)}
-          hint={`${descriptive.totalDeals} total deals`}
+          hint={`${descriptive.totalDeals} sales records · open, completed and unsuccessful`}
           icon={ICONS.pipeline}
         />
-        <StatCard label="Open deals" value={descriptive.openCount} hint="Across the whole team" icon={ICONS.open} tone="sky" />
+        <StatCard label="Open sales records" value={descriptive.openCount} hint="Across the whole team" icon={ICONS.open} tone="sky" />
         <StatCard
-          label="Won value"
+          label="Completed sales value"
           value={currencyShort(descriptive.wonValue)}
           fullValue={currency(descriptive.wonValue)}
-          hint={`${descriptive.wonCount} deal${descriptive.wonCount === 1 ? '' : 's'} won`}
+          hint={`${descriptive.wonCount} sales record${descriptive.wonCount === 1 ? '' : 's'} marked won`}
           icon={ICONS.won}
           tone="emerald"
         />
         <StatCard
-          label="Team win rate"
+          label="Team success rate"
           value={percent(winRate)}
-          hint={closedCount ? `Of ${closedCount} closed deals` : 'No closed deals yet'}
+          hint={closedCount ? `${descriptive.wonCount} completed of ${closedCount} closed records` : 'No completed sales records yet'}
           icon={ICONS.target}
           tone="gold"
         />
       </div>
 
-      <Card title="Representatives" subtitle="Ranked by won value" className="mb-8">
+      <Card title="Representatives" subtitle="Ranked by completed sales value" className="mb-8">
         {team.length === 0 ? (
-          <EmptyState title="No representatives in your team yet" description="Your company admin assigns representatives to you on the Accounts page." />
+          <EmptyState title="No representatives in your team yet" description="Your company administrator assigns representatives to you on the Accounts page." />
         ) : (
           <div className="-mx-5 -mb-5 overflow-x-auto">
             <table className="w-full min-w-[560px] text-sm">
               <thead>
                 <tr className="border-y border-fg/10 text-left text-xs uppercase tracking-wide text-subtle">
                   <th className="px-5 py-2 font-semibold">Representative</th>
-                  <th className="px-3 py-2 text-right font-semibold">Open</th>
+                  <th className="px-3 py-2 text-right font-semibold">Open records</th>
                   <th className="px-3 py-2 text-right font-semibold">Open value</th>
-                  <th className="px-3 py-2 text-right font-semibold">Won</th>
-                  <th className="px-3 py-2 text-right font-semibold">Won value</th>
-                  <th className="px-5 py-2 text-right font-semibold">Win rate</th>
+                  <th className="px-3 py-2 text-right font-semibold">Completed</th>
+                  <th className="px-3 py-2 text-right font-semibold">Completed value</th>
+                  <th className="px-5 py-2 text-right font-semibold">Success rate</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-fg/5">
@@ -154,13 +154,13 @@ export default function ManagerOverviewPage() {
       </div>
 
       <PriorityDealsCard
-        title="Top priority deals across the team"
-        subtitle="Open deals ranked by stage, urgency, and value"
+        title="Priority sales records across the team"
+        subtitle="Open sales records ranked by stage, urgency, and value"
         deals={topDeals}
         dealsPath="/manager/deals"
         stages={diagnostic.stages.map((stage) => ({ id: stage.id, label: stage.label }))}
         ownerNames={ownerNames}
-        emptyDescription="Add or import deals on the Deals page."
+        emptyDescription="Add or import sales records on the Sales records page."
       />
     </DashboardShell>
   );

@@ -3,7 +3,7 @@ export const AUDIT_CATEGORIES = [
   { value: '', label: 'All activity' },
   { value: 'auth', label: 'Sign-ins & passwords' },
   { value: 'user', label: 'Accounts' },
-  { value: 'deal', label: 'Deals' },
+  { value: 'deal', label: 'Sales records' },
   { value: 'contact', label: 'Contacts' },
   { value: 'campaign', label: 'Campaigns' },
   { value: 'settings', label: 'Configuration' },
@@ -45,17 +45,17 @@ export function describeAudit(entry) {
     case 'user.reset_link':
       return `Created a password reset link for ${d.name || 'a user'}`;
     case 'deal.create':
-      return `Created deal “${d.title}”${forUser(d)}`;
+      return `Created sales record “${d.title}”${forUser(d)}`;
     case 'deal.update':
-      return `Updated deal “${d.title}”${d.changes?.length ? ` (${d.changes.join(', ')})` : ''}`;
+      return `Updated sales record “${d.title}”${d.changes?.length ? ` (${d.changes.join(', ')})` : ''}`;
     case 'deal.delete':
-      return d.title ? `Deleted deal “${d.title}”` : 'Deleted a deal';
+      return d.title ? `Deleted sales record “${d.title}”` : 'Deleted a sales record';
     case 'deal.import':
-      return `Imported ${d.imported} deal${d.imported === 1 ? '' : 's'} from ${d.fileName ? `“${d.fileName}”` : 'CSV'}${d.skipped ? `, ${d.skipped} skipped` : ''}`;
+      return `Imported ${d.imported} sales record${d.imported === 1 ? '' : 's'} from ${d.fileName ? `“${d.fileName}”` : 'CSV'}${d.skipped ? `, ${d.skipped} skipped` : ''}`;
     case 'deal.import_rename':
       return `Renamed an import${d.from ? ` from “${d.from}”` : ''} to “${d.to}”`;
     case 'deal.import_delete':
-      return `Deleted the import${d.fileName ? ` “${d.fileName}”` : ''}: ${d.deletedDeals} deal${d.deletedDeals === 1 ? '' : 's'}${d.deletedContacts ? ` and ${d.deletedContacts} contact${d.deletedContacts === 1 ? '' : 's'}` : ''}`;
+      return `Deleted the import${d.fileName ? ` “${d.fileName}”` : ''}: ${d.deletedDeals} sales record${d.deletedDeals === 1 ? '' : 's'}${d.deletedContacts ? ` and ${d.deletedContacts} contact${d.deletedContacts === 1 ? '' : 's'}` : ''}`;
     case 'contact.create':
       return `Added contact “${d.name}”`;
     case 'contact.update':
@@ -65,11 +65,11 @@ export function describeAudit(entry) {
     case 'campaign.create':
       return `Created campaign “${d.name}”${forUser(d)}`;
     case 'campaign.delete':
-      return `Deleted campaign “${d.name}”${d.unlinkedDeals ? ` (${d.unlinkedDeals} deal${d.unlinkedDeals === 1 ? '' : 's'} unlinked)` : ''}`;
+      return `Deleted campaign “${d.name}”${d.unlinkedDeals ? ` (${d.unlinkedDeals} sales record${d.unlinkedDeals === 1 ? '' : 's'} unlinked)` : ''}`;
     case 'settings.benchmarks_update':
       return 'Updated conversion targets';
     case 'settings.deal_fields_update':
-      return 'Updated business-specific deal fields';
+      return 'Updated custom sales record fields';
     case 'settings.join_code_reset':
       return 'Replaced the company join code';
     default:

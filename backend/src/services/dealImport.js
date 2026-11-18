@@ -48,10 +48,10 @@ const HEADER_ALIASES = {
 
 const STAGE_ALIASES = {
   lead: ['lead', 'new', 'new lead', 'prospect', 'enquiry', 'inquiry', 'open', 'cold', 'warm'],
-  qualified: ['qualified', 'contacted', 'interested', 'qualified lead', 'follow up', 'following up'],
-  proposal: ['proposal', 'quote', 'quoted', 'quotation', 'proposal sent', 'quote sent', 'invoice sent', 'offer sent', 'plan shared'],
-  negotiation: ['negotiation', 'negotiating', 'in negotiation', 'pending', 'deposit paid', 'partially paid', 'partly paid', 'deposit', 'amelipa nusu', 'inasubiri'],
-  won: ['won', 'closed won', 'closed-won', 'sold', 'paid', 'complete', 'completed', 'deal won', 'done', 'delivered', 'fully paid', 'closed', 'imelipwa', 'limelipwa', 'amelipa', 'imekamilika', 'imeuzwa'],
+  qualified: ['qualified', 'contacted', 'interested', 'qualified lead', 'follow up', 'following up', 'in progress'],
+  proposal: ['proposal', 'quote', 'quoted', 'quotation', 'proposal sent', 'quote sent', 'invoice sent', 'offer sent', 'plan shared', 'order confirmed', 'confirmed order', 'order placed', 'ready for fulfilment', 'ready for fulfillment'],
+  negotiation: ['negotiation', 'negotiating', 'in negotiation', 'pending', 'payment pending', 'awaiting payment', 'deposit paid', 'partially paid', 'partly paid', 'deposit', 'amelipa nusu', 'inasubiri'],
+  won: ['won', 'closed won', 'closed-won', 'sold', 'paid', 'complete', 'completed', 'sale completed', 'deal won', 'done', 'delivered', 'fully paid', 'closed', 'imelipwa', 'limelipwa', 'amelipa', 'imekamilika', 'imeuzwa'],
   lost: ['lost', 'closed lost', 'closed-lost', 'cancelled', 'canceled', 'rejected', 'deal lost', 'declined', 'refunded', 'imeghairiwa', 'imefutwa', 'imekataliwa', 'amekataa'],
 };
 

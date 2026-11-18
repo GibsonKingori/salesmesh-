@@ -50,14 +50,14 @@ export default function AddDealModal({ onClose, onCreated, stages }) {
       });
       onCreated(data.deal);
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not create deal');
+      setError(err.response?.data?.error || 'Could not create sales record');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Modal title="Add a deal" onClose={onClose}>
+    <Modal title="Add a sales record" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
           <div className="rounded-md border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
@@ -66,10 +66,10 @@ export default function AddDealModal({ onClose, onCreated, stages }) {
         )}
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-fg-soft">Deal title</label>
+          <label className="mb-1 block text-sm font-medium text-fg-soft">Sales record description</label>
           <input
             type="text"
-            placeholder="e.g. Acme Corp — Annual Contract"
+            placeholder="e.g. Hardware supply to ABC Traders"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className={inputClass}
@@ -145,7 +145,7 @@ export default function AddDealModal({ onClose, onCreated, stages }) {
           disabled={loading || fieldsLoading || fieldsLoadError}
           className="w-full rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {loading ? 'Saving…' : 'Add deal'}
+          {loading ? 'Saving…' : 'Add sales record'}
         </button>
       </form>
     </Modal>

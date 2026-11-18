@@ -31,7 +31,7 @@ const TEMPLATE_ROWS = [
 const ACCEPT = '.csv,.tsv,.txt,.xlsx,.xlsm,.xls,.ods,.numbers,.json,.pdf,image/png,image/jpeg,image/webp,image/gif';
 
 const EXTRACTED_LABELS = {
-  title: 'Deal',
+  title: 'Sales record',
   value: 'Value',
   stage: 'Stage',
   created_date: 'Created',
@@ -47,7 +47,7 @@ const EXTRACTED_LABELS = {
 
 // What each of the user's columns can be matched to (services/dealImport.js IMPORT_FIELDS)
 const FIELD_OPTIONS = [
-  ['title', 'Deal / product name'],
+  ['title', 'Sales record / product name'],
   ['value', 'Amount'],
   ['stage', 'Status'],
   ['created_date', 'Date started / sale date'],
@@ -371,7 +371,7 @@ export default function ImportCsvModal({ onClose, onImported, stages }) {
 
   const downloadTemplate = () =>
     downloadCsv(
-      'salesmesh-deals-template.csv',
+      'salesmesh-sales-records-template.csv',
       isManager ? TEMPLATE_HEADER : TEMPLATE_HEADER.slice(0, -1),
       TEMPLATE_ROWS.map((r) => (isManager ? r : r.slice(0, -1)))
     );
@@ -382,7 +382,7 @@ export default function ImportCsvModal({ onClose, onImported, stages }) {
     'w-full rounded-lg border border-fg/10 bg-fg/5 py-2.5 text-sm font-medium text-fg-soft transition-colors hover:bg-fg/10 hover:text-fg';
 
   return (
-    <Modal title="Import deals from your records" onClose={onClose}>
+    <Modal title="Import sales records" onClose={onClose}>
       {error && (
         <div className="mb-4 rounded-md border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{error}</div>
       )}
@@ -391,13 +391,13 @@ export default function ImportCsvModal({ onClose, onImported, stages }) {
         <div className="space-y-4">
           {undone ? (
             <div className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-2.5 text-sm text-fg-soft">
-              Import undone: {undone.deletedDeals} deal{undone.deletedDeals === 1 ? '' : 's'}
+              Import undone: {undone.deletedDeals} sales record{undone.deletedDeals === 1 ? '' : 's'}
               {undone.deletedContacts ? ` and ${undone.deletedContacts} contact${undone.deletedContacts === 1 ? '' : 's'}` : ''} deleted.
             </div>
           ) : (
             <div className="flex items-start justify-between gap-3 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-800 dark:text-emerald-200">
               <span>
-                Imported {result.imported} deal{result.imported === 1 ? '' : 's'} worth {currency(result.totalValue)} as “{importName.trim() || file?.name}”
+                Imported {result.imported} sales record{result.imported === 1 ? '' : 's'} worth {currency(result.totalValue)} as “{importName.trim() || file?.name}”
                 {result.newContacts ? `, and added ${result.newContacts} new contact${result.newContacts === 1 ? '' : 's'}` : ''}.
               </span>
               {result.importId && !confirmUndo && (
@@ -447,7 +447,7 @@ export default function ImportCsvModal({ onClose, onImported, stages }) {
               className="mt-1 w-full rounded-lg border border-fg/10 bg-fg/5 px-3 py-1.5 text-sm text-fg outline-none transition-all placeholder-faint focus:border-brand-400/60 focus:ring-2 focus:ring-brand-500/20"
             />
             <span className="mt-1 block text-xs text-subtle">
-              How it's listed under Past imports, so you can find it to undo it later. Left empty, the file name is used.
+              How it's listed in import history, so you can find it to undo it later. Left empty, the file name is used.
             </span>
           </label>
           {preview.extracted && (
@@ -476,7 +476,7 @@ export default function ImportCsvModal({ onClose, onImported, stages }) {
           )}
           <dl className="space-y-1.5 rounded-lg border border-fg/10 bg-fg/[0.03] px-3 py-2.5 text-sm">
             <Row label={preview.extracted ? 'Rows found' : 'Rows in file'}>{preview.rows}</Row>
-            <Row label="Deals to import">{preview.imported}</Row>
+            <Row label="Sales records to import">{preview.imported}</Row>
             <Row label="Total value">{currency(preview.totalValue)}</Row>
             <Row label="By stage">
               {stages.filter((s) => preview.byStage[s.id])
@@ -494,7 +494,7 @@ export default function ImportCsvModal({ onClose, onImported, stages }) {
           )}
           {(!preview.stageColumn || preview.defaultedRows > 0) && (
             <label className="flex items-center justify-between gap-3 rounded-lg border border-fg/10 bg-fg/[0.03] px-3 py-2.5 text-xs text-fg-soft">
-              <span>{preview.stageColumn ? 'Deals with no status are:' : 'Your file has no status column. These deals are:'}</span>
+              <span>{preview.stageColumn ? 'Sales records with no status are:' : 'Your file has no status column. These records are:'}</span>
               <select
                 value={preview.defaultStage}
                 disabled={loading}
@@ -550,7 +550,7 @@ export default function ImportCsvModal({ onClose, onImported, stages }) {
               Choose another file
             </button>
             <button onClick={importNow} disabled={loading || preview.imported === 0} className={buttonClass}>
-              {loading ? 'Working…' : `Import ${preview.imported} deal${preview.imported === 1 ? '' : 's'}`}
+              {loading ? 'Working…' : `Import ${preview.imported} sales record${preview.imported === 1 ? '' : 's'}`}
             </button>
           </div>
         </div>

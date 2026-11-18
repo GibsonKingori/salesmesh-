@@ -246,7 +246,7 @@ function bodyObject(data) {
 function createRecord(resource, body, user, id) {
   const now = new Date().toISOString();
   if (resource === 'deals') {
-    if (!body.title || body.value == null || !body.stage) throw new Error('Title, value, and stage are required to save a deal offline.');
+    if (!body.title || body.value == null || !body.stage) throw new Error('Name, value, and stage are required to save a sales record offline.');
     return {
       id,
       company_id: user.company_id,
@@ -293,7 +293,7 @@ function createRecord(resource, body, user, id) {
   }
   if (resource === 'activities') {
     if (!body.deal_id || !['call', 'email', 'meeting', 'note'].includes(body.type)) {
-      throw new Error('Choose a deal and activity type before saving offline.');
+      throw new Error('Choose a sales record and activity type before saving offline.');
     }
     return {
       id,

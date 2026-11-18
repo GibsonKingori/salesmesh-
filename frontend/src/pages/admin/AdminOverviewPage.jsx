@@ -141,7 +141,7 @@ export default function AdminOverviewPage() {
           hint={users.disabled ? `${users.disabled} disabled` : 'All accounts active'}
           icon={ICONS.users}
         />
-        <StatCard label="Deals" value={records.deals} hint={`${records.activities} activities logged`} icon={ICONS.pipeline} tone="sky" />
+        <StatCard label="Sales records" value={records.deals} hint={`${records.activities} activities logged`} icon={ICONS.pipeline} tone="sky" />
         <StatCard
           label="Contacts & campaigns"
           value={records.contacts + records.campaigns}

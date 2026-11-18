@@ -144,7 +144,7 @@ export default function DealDrawer({ deal: initialDeal, stages, onClose, onChang
       await api.delete(`/deals/${deal.id}`);
       onDeleted();
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not delete the deal');
+      setError(err.response?.data?.error || 'Could not delete the sales record');
       setDeleting(false);
       setConfirmDelete(false);
     }
@@ -403,7 +403,7 @@ export default function DealDrawer({ deal: initialDeal, stages, onClose, onChang
             {confirmDelete ? (
               <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-sm">
                 <p className="text-red-700 dark:text-red-300">
-                  Delete “{deal.title}” and its whole activity history? This can't be undone.
+                  Delete sales record “{deal.title}” and its whole activity history? This can't be undone.
                 </p>
                 <div className="mt-2 flex justify-end gap-2">
                   <button
@@ -417,7 +417,7 @@ export default function DealDrawer({ deal: initialDeal, stages, onClose, onChang
                     disabled={deleting}
                     className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
                   >
-                    {deleting ? 'Deleting…' : 'Delete deal'}
+                    {deleting ? 'Deleting…' : 'Delete sales record'}
                   </button>
                 </div>
               </div>

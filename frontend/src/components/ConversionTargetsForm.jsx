@@ -55,7 +55,7 @@ export default function ConversionTargetsForm() {
       <div className="border-b border-fg/10 px-5 py-4">
         <h2 className="font-display font-semibold text-fg">Conversion targets</h2>
         <p className="mt-0.5 text-xs text-subtle">
-          The share of deals you expect to move from one stage to the next. Stages below target are flagged on the
+          The share of sales records you expect to move from one stage to the next. Stages below target are flagged on the
           Overview funnel. Leave a field blank for no target.
         </p>
       </div>

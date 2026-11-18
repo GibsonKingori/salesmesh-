@@ -49,7 +49,7 @@ Copy every deal / sale / order row into "rows". One row per deal; skip header, t
 Fields (leave a field out when the record doesn't show it; never invent values):
 - title: what was sold or the deal name (left out if the record doesn't say)
 - value: the amount exactly as written, e.g. "KES 120,000"
-- stage: one of lead, qualified, proposal, negotiation, won, lost. Paid / sold / complete means won; cancelled / rejected means lost; quoted means proposal. If the record shows no status at all, leave it out (the user chooses a default). If a status is shown but you can't tell which stage it is, copy it as written.
+- stage: one of lead, qualified, proposal, negotiation, won, lost. Paid / sold / complete means won; cancelled / rejected means lost; in progress or follow-up means qualified; quoted, offer sent, or order confirmed means proposal; payment pending or deposit means negotiation. If the record shows no status at all, leave it out (the user chooses a default). If a status is shown but you can't tell which stage it is, copy it as written.
 - created_date, closed_date, expected_close_date: YYYY-MM-DD. Dates in these records are day-first (03/04/2026 is 3 April 2026). closed_date is only for won or lost deals; for a sales book or receipt, the sale date is both created_date and closed_date.
 - ${fields.filter((f) => !['title', 'value', 'stage', 'created_date', 'closed_date', 'expected_close_date'].includes(f)).join(', ')}: as written.${fields.includes('owner') ? ' owner is the salesperson.' : ''}
 

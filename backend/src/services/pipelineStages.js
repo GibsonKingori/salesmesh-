@@ -1,26 +1,40 @@
 export const DEFAULT_PIPELINE_STAGES = [
   { id: 'lead', label: 'New', type: 'open' },
-  { id: 'qualified', label: 'Under review', type: 'open' },
-  { id: 'proposal', label: 'Offer sent', type: 'open' },
-  { id: 'negotiation', label: 'Waiting for decision', type: 'open' },
-  { id: 'won', label: 'Completed', type: 'won' },
-  { id: 'lost', label: 'Not proceeding', type: 'lost' },
+  { id: 'qualified', label: 'In progress', type: 'open' },
+  { id: 'proposal', label: 'Order confirmed', type: 'open' },
+  { id: 'negotiation', label: 'Payment pending', type: 'open' },
+  { id: 'won', label: 'Sale completed', type: 'won' },
+  { id: 'lost', label: 'Cancelled', type: 'lost' },
 ];
+
+const LEGACY_DEFAULT_LABELS = {
+  lead: ['New'],
+  qualified: ['Under review'],
+  proposal: ['Offer sent', 'Plan shared'],
+  negotiation: ['Waiting for decision'],
+  won: ['Completed'],
+  lost: ['Not proceeding'],
+};
 
 export async function loadPipelineStages(supabase, companyId) {
   const { data, error } = await supabase.from('companies').select('pipeline_stages').eq('id', companyId).maybeSingle();
   if (error) throw error;
   if (!Array.isArray(data?.pipeline_stages?.stages)) return DEFAULT_PIPELINE_STAGES;
-  return data.pipeline_stages.stages.map((stage) =>
-    stage.id === 'proposal' && typeof stage.label === 'string' && stage.label.trim().toLowerCase() === 'plan shared'
-      ? { ...stage, label: 'Offer sent' }
-      : stage
-  );
+  const savedStages = data.pipeline_stages.stages;
+  const isLegacyDefault = savedStages.length === DEFAULT_PIPELINE_STAGES.length &&
+    savedStages.every((stage, index) => {
+      const defaultStage = DEFAULT_PIPELINE_STAGES[index];
+      const legacyLabels = LEGACY_DEFAULT_LABELS[stage.id] || [];
+      return stage.id === defaultStage.id &&
+        stage.type === defaultStage.type &&
+        legacyLabels.some((label) => label.toLowerCase() === stage.label?.trim().toLowerCase());
+    });
+  return isLegacyDefault ? DEFAULT_PIPELINE_STAGES : savedStages;
 }
 
 export function validatePipelineStages(value) {
   if (!Array.isArray(value) || value.length < 3) {
-    return { error: 'Add at least one in-progress stage, plus Won and Lost stages.' };
+    return { error: 'Add at least one in-progress stage, plus Sale completed and Cancelled stages.' };
   }
 
   const ids = new Set();
@@ -49,12 +63,12 @@ export function validatePipelineStages(value) {
   if (stages.filter((stage) => stage.type === 'open').length < 1 ||
       stages.filter((stage) => stage.type === 'won').length !== 1 ||
       stages.filter((stage) => stage.type === 'lost').length !== 1) {
-    return { error: 'Keep at least one in-progress stage and exactly one Won and one Lost stage.' };
+    return { error: 'Keep at least one in-progress stage and exactly one Sale completed and one Cancelled stage.' };
   }
   if (stages[stages.length - 2].id !== 'won' || stages[stages.length - 1].id !== 'lost' ||
       stages.some((stage) => stage.type === 'won' && stage.id !== 'won') ||
       stages.some((stage) => stage.type === 'lost' && stage.id !== 'lost')) {
-    return { error: 'Keep Won and Lost as the final two stages, in that order.' };
+    return { error: 'Keep Sale completed and Cancelled as the final two stages, in that order.' };
   }
   return { stages };
 }

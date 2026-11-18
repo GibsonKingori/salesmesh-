@@ -114,7 +114,7 @@ export default function DealsPage({ scope }) {
         if (id === requestId.current) setLists({ open, closed });
       })
       .catch((err) => {
-        if (id === requestId.current) setError(err.response?.data?.error || 'Could not load your deals');
+        if (id === requestId.current) setError(err.response?.data?.error || 'Could not load your sales records');
       })
       .finally(() => {
         if (id === requestId.current) setLoading(false);
@@ -151,7 +151,7 @@ export default function DealsPage({ scope }) {
         [kind]: { deals: [...prev[kind].deals, ...next.deals], total: next.total, pages: current.pages + 1 },
       }));
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not load more deals');
+      setError(err.response?.data?.error || 'Could not load more sales records');
     } finally {
       setLoadingMore(null);
     }
@@ -175,7 +175,7 @@ export default function DealsPage({ scope }) {
       await fetchAll({ silent: true });
     } catch (err) {
       setStageLocally(deal.id, deal.stage);
-      setError(err.response?.data?.error || 'Could not update the deal stage');
+      setError(err.response?.data?.error || 'Could not update the sales record stage');
     } finally {
       setSavingId(null);
     }
@@ -209,14 +209,14 @@ export default function DealsPage({ scope }) {
         >
           {loadingMore === kind
             ? 'Loading…'
-            : `Load more (${lists[kind].deals.length} of ${lists[kind].total} shown)`}
+            : `Load more sales records (${lists[kind].deals.length} of ${lists[kind].total} shown)`}
         </button>
       </div>
     );
 
   const noMatches = (
     <div className="px-5 py-10 text-center text-sm text-muted">
-      No deals match these filters.{' '}
+      No sales records match these filters.{' '}
       <button onClick={clearFilters} className="font-medium text-brand-700 hover:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200">
         Clear filters
       </button>
@@ -224,26 +224,26 @@ export default function DealsPage({ scope }) {
   );
 
   return (
-    <DashboardShell title={isTeam ? 'Team deals' : 'My deals'}>
+    <DashboardShell title={isTeam ? 'Team sales records' : 'My sales records'}>
       <p className="mb-4 text-sm text-muted">
-        Record sales opportunities as deals, track each stage in the pipeline, and keep won and lost deals for reference.
+        Keep the business’s sales records together: track each record through the pipeline and review completed or unsuccessful sales.
       </p>
       <div className="rounded-2xl border border-fg/10 bg-surface shadow-sm shadow-ink-900/5">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-fg/10 px-5 py-4">
           <div>
             <h2 className="font-display font-semibold text-fg">
-              {view === 'board' ? (isTeam ? 'Team pipeline' : 'Your pipeline') : tab === 'open' ? (isTeam ? 'Team deals, by priority' : 'Your deals, by priority') : 'Closed deals'}
+              {view === 'board' ? (isTeam ? 'Team pipeline' : 'Your pipeline') : tab === 'open' ? (isTeam ? 'Team sales records, by priority' : 'Your sales records, by priority') : 'Closed sales records'}
             </h2>
             <p className="mt-0.5 text-xs text-subtle">
               {view === 'board'
-                ? 'Drag a deal to another column to change its stage'
+                ? 'Move a sales record to another column to change its stage'
                 : tab === 'open'
                 ? 'Sorted by priority to help you choose what to work on next'
-                : 'Completed and unsuccessful deals, newest first'}
+                : 'Completed and cancelled sales, newest first'}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex rounded-lg border border-fg/10 bg-fg/5 p-0.5" role="group" aria-label="Deals view">
+            <div className="flex rounded-lg border border-fg/10 bg-fg/5 p-0.5" role="group" aria-label="Sales records view">
               {VIEWS.map((v) => (
                 <button
                   key={v.id}
@@ -261,19 +261,19 @@ export default function DealsPage({ scope }) {
               onClick={() => setShowImport(true)}
               className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-1.5 text-sm font-medium text-fg-soft transition-colors hover:border-fg/20 hover:bg-fg/10 hover:text-fg"
             >
-              Import deals
+              Import sales records
             </button>
             <button
               onClick={() => setShowImportHistory(true)}
               className="rounded-lg border border-fg/10 bg-fg/5 px-3 py-1.5 text-sm font-medium text-fg-soft transition-colors hover:border-fg/20 hover:bg-fg/10 hover:text-fg"
             >
-              Past imports
+              Import history
             </button>
             <button
               onClick={() => setShowAddDeal(true)}
               className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-500"
             >
-              + Add deal
+              + Add sales record
             </button>
           </div>
         </div>
@@ -302,11 +302,11 @@ export default function DealsPage({ scope }) {
         <div className="flex flex-wrap items-center gap-2 border-b border-fg/10 px-5 py-3">
           <input
             type="search"
-            placeholder="Search deal titles…"
+            placeholder="Search sales records…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className={`${selectClass} w-56 placeholder-faint`}
-            aria-label="Search deals"
+            aria-label="Search sales records"
           />
           <select
             value={filters.stage}
@@ -359,15 +359,15 @@ export default function DealsPage({ scope }) {
         {filters.import_id && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-fg/10 bg-brand-500/[0.06] px-5 py-2.5 text-sm">
             <span className="text-fg-soft">
-              Showing only deals from <span className="font-medium text-fg">{viewedImport ? importLabel(viewedImport) : 'one import'}</span>
-              {viewedImport && ` (${viewedImport.deal_count.toLocaleString('en-KE')} deals: check the Open and Closed tabs)`}
+              Showing only sales records from <span className="font-medium text-fg">{viewedImport ? importLabel(viewedImport) : 'one import'}</span>
+              {viewedImport && ` (${viewedImport.deal_count.toLocaleString('en-KE')} records: check the Open and Closed tabs)`}
             </span>
             <span className="flex gap-3">
               <button onClick={() => setShowImportHistory(true)} className="font-medium text-brand-700 hover:text-brand-800 dark:text-brand-300 dark:hover:text-brand-200">
-                Back to Past imports
+                Back to import history
               </button>
               <button onClick={clearFilters} className="text-muted hover:text-fg">
-                Show all deals
+                Show all sales records
               </button>
             </span>
           </div>
@@ -383,7 +383,7 @@ export default function DealsPage({ scope }) {
         )}
 
         {loading || stages.length === 0 ? (
-          <div className="px-5 py-10 text-center text-sm text-muted">Loading deals…</div>
+          <div className="px-5 py-10 text-center text-sm text-muted">Loading sales records…</div>
         ) : view === 'board' ? (
           <>
             <PipelineBoard
@@ -413,8 +413,8 @@ export default function DealsPage({ scope }) {
           ) : priorityDeals.length === 0 ? (
             <div className="px-5 py-6">
               <EmptyState
-                title={isTeam ? 'No open deals yet' : 'No open deals assigned to you yet'}
-                description="Add your first deal or import your existing records (spreadsheet, CSV or a screenshot) to get started."
+                title={isTeam ? 'No open sales records yet' : 'No open sales records assigned to you yet'}
+                description="Add your first sales record or import your existing records (spreadsheet, CSV or a screenshot) to get started."
               />
             </div>
           ) : (
@@ -459,8 +459,8 @@ export default function DealsPage({ scope }) {
         ) : closedDeals.length === 0 ? (
           <div className="px-5 py-6">
             <EmptyState
-              title="No closed deals yet"
-              description="Deals you move to a completed or unsuccessful stage will show up here."
+              title="No closed sales records yet"
+              description="Sales records you move to a completed or unsuccessful stage will show up here."
             />
           </div>
         ) : (

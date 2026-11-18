@@ -14,13 +14,13 @@ const ROLE_LABELS = {
 const NAV_LINKS = {
   manager: [
     { to: '/manager', label: 'Overview', end: true },
-    { to: '/manager/deals', label: 'Deals' },
+    { to: '/manager/deals', label: 'Sales records' },
     { to: '/manager/contacts', label: 'Contacts' },
     { to: '/manager/campaigns', label: 'Campaigns' },
   ],
   representative: [
     { to: '/rep', label: 'My dashboard', end: true },
-    { to: '/rep/deals', label: 'Deals' },
+    { to: '/rep/deals', label: 'Sales records' },
     { to: '/rep/contacts', label: 'Contacts' },
     { to: '/rep/campaigns', label: 'Campaigns' },
   ],

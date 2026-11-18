@@ -95,7 +95,7 @@ export default function PipelineBoard({ deals, scores, savingId, onMove, onOpen,
             ))}
             {items.length === 0 && (
               <li className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-fg/10 px-2 py-4 text-center text-xs text-faint">
-                Drop deals here
+                Drop sales records here
               </li>
             )}
           </ul>

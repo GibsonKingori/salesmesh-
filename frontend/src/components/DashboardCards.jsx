@@ -42,7 +42,7 @@ export function DashboardState({ title, error }) {
 
 export function FunnelCard({ title = 'Conversion funnel', diagnostic }) {
   return (
-    <Card title={title} subtitle="Number of deals currently at each step of your workflow">
+    <Card title={title} subtitle="Number of sales records currently at each step of your workflow">
       <ConversionFunnelChart stages={diagnostic.stages} transitions={diagnostic.transitions} />
     </Card>
   );
@@ -51,9 +51,9 @@ export function FunnelCard({ title = 'Conversion funnel', diagnostic }) {
 export function ForecastCard({ predictive, velocity }) {
   const subtitle =
     predictive.basis === 'no_won_deals'
-      ? 'Trend-based — needs won deals to project from.'
+      ? 'Trend-based — needs completed sales records to project from.'
       : predictive.basis === 'insufficient_history'
-        ? 'Trend-based — needs deals won on different days to spot a trend.'
+        ? 'Trend-based — needs completed sales records on different days to spot a trend.'
         : `Trend-based, ~${currencyShort(predictive.dailyRate)}/day`;
 
   return (
@@ -81,9 +81,9 @@ export function ForecastCard({ predictive, velocity }) {
 // Ranked open deals. `ownerNames` (id → name) adds an owner column on the team view.
 export function PriorityDealsCard({ title, subtitle, deals, dealsPath, ownerNames, emptyDescription, stages }) {
   return (
-    <Card title={title} subtitle={subtitle} action={<CardLink to={dealsPath}>View all deals →</CardLink>}>
+    <Card title={title} subtitle={subtitle} action={<CardLink to={dealsPath}>View all sales records →</CardLink>}>
       {deals.length === 0 ? (
-        <EmptyState title="No open deals" description={emptyDescription} />
+        <EmptyState title="No open sales records" description={emptyDescription} />
       ) : (
         <ul className="-mx-5 -mb-5 divide-y divide-fg/5">
           {deals.map((d) => (

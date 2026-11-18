@@ -2,9 +2,16 @@ import { DEFAULT_PIPELINE_STAGES, loadPipelineStages, validatePipelineStages } f
 import { createFakeSupabase } from '../test/fakeSupabase.js';
 
 describe('loadPipelineStages', () => {
-  test('shows the clearer label for companies with the previous default without changing stage IDs', async () => {
+  test('relabels the old default stages without changing IDs or stored settings', async () => {
+    const oldLabels = {
+      qualified: 'Under review',
+      proposal: 'Offer sent',
+      negotiation: 'Waiting for decision',
+      won: 'Completed',
+      lost: 'Not proceeding',
+    };
     const savedStages = DEFAULT_PIPELINE_STAGES.map((stage) =>
-      stage.id === 'proposal' ? { ...stage, label: 'Plan shared' } : stage
+      oldLabels[stage.id] ? { ...stage, label: oldLabels[stage.id] } : stage
     );
     const supabase = createFakeSupabase({
       companies: [{ id: 'co-1', pipeline_stages: { stages: savedStages } }],
@@ -12,12 +19,8 @@ describe('loadPipelineStages', () => {
 
     const stages = await loadPipelineStages(supabase, 'co-1');
 
-    expect(stages.find((stage) => stage.id === 'proposal')).toEqual({
-      id: 'proposal',
-      label: 'Offer sent',
-      type: 'open',
-    });
-    expect(supabase.tables.companies[0].pipeline_stages.stages.find((stage) => stage.id === 'proposal').label).toBe('Plan shared');
+    expect(stages).toEqual(DEFAULT_PIPELINE_STAGES);
+    expect(supabase.tables.companies[0].pipeline_stages.stages).toEqual(savedStages);
   });
 
   test('keeps custom labels for the proposal stage', async () => {
@@ -46,7 +49,7 @@ describe('validatePipelineStages', () => {
     const duplicate = [...DEFAULT_PIPELINE_STAGES];
     duplicate[1] = { ...duplicate[1], label: duplicate[0].label };
     expect(validatePipelineStages(duplicate).error).toMatch(/unique/);
-    expect(validatePipelineStages(DEFAULT_PIPELINE_STAGES.slice(0, -1)).error).toMatch(/one Won and one Lost/);
+    expect(validatePipelineStages(DEFAULT_PIPELINE_STAGES.slice(0, -1)).error).toMatch(/one Sale completed and one Cancelled/);
   });
 
   test('requires Won and Lost to remain the final two stages', () => {

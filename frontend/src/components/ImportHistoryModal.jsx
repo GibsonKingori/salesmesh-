@@ -9,7 +9,7 @@ const count = (n, one, many) => `${Number(n).toLocaleString('en-KE')} ${n === 1 
 
 // What the list calls an import: its name, or (for imports saved before names were recorded)
 // a description built from its size and date
-export const importLabel = (imp) => imp.file_name || `Import of ${count(imp.deal_count, 'deal', 'deals')} on ${formatDate(imp.created_at)}`;
+export const importLabel = (imp) => imp.file_name || `Import of ${count(imp.deal_count, 'sales record', 'sales records')} on ${formatDate(imp.created_at)}`;
 
 const smallButton =
   'whitespace-nowrap rounded-lg border border-fg/10 px-2.5 py-1 text-xs font-medium text-fg-soft transition-colors hover:bg-fg/10 hover:text-fg';
@@ -42,10 +42,10 @@ export default function ImportHistoryModal({ onClose, onDeleted, onView }) {
       const { data } = await api.delete(`/deals/imports/${imp.id}`);
       const contacts = data.deletedContacts ? ` and ${count(data.deletedContacts, 'contact', 'contacts')}` : '';
       const kept = data.remainingDeals
-        ? ` ${data.remainingDeals} deal${data.remainingDeals === 1 ? ' belongs' : 's belong'} to someone outside your team and ${data.remainingDeals === 1 ? 'was' : 'were'} kept.`
+        ? ` ${data.remainingDeals} sales record${data.remainingDeals === 1 ? ' belongs' : 's belong'} to someone outside your team and ${data.remainingDeals === 1 ? 'was' : 'were'} kept.`
         : '';
       setConfirmingId(null);
-      setNotice(`Deleted ${count(data.deletedDeals, 'deal', 'deals')}${contacts} from “${importLabel(imp)}”.${kept}`);
+      setNotice(`Deleted ${count(data.deletedDeals, 'sales record', 'sales records')}${contacts} from “${importLabel(imp)}”.${kept}`);
       onDeleted();
       await load();
     } catch (err) {
@@ -66,7 +66,7 @@ export default function ImportHistoryModal({ onClose, onDeleted, onView }) {
   };
 
   return (
-    <Modal title="Past imports" onClose={onClose}>
+    <Modal title="Import history" onClose={onClose}>
       {error && (
         <div className="mb-4 rounded-md border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{error}</div>
       )}
@@ -74,7 +74,7 @@ export default function ImportHistoryModal({ onClose, onDeleted, onView }) {
         <div className="mb-4 rounded-md border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-200">{notice}</div>
       )}
       <p className="mb-3 text-xs text-subtle">
-        Not sure which import is which? Use <span className="font-medium text-muted">View deals</span> to see exactly what an import added, and{' '}
+        Not sure which import is which? Use <span className="font-medium text-muted">View sales records</span> to see exactly what an import added, and{' '}
         <span className="font-medium text-muted">Rename</span> to give it a name you'll recognise.
       </p>
       {imports === null ? (
@@ -134,13 +134,13 @@ export default function ImportHistoryModal({ onClose, onDeleted, onView }) {
                 {imp.user_name && ` by ${imp.user_name}`}
               </p>
               <p className="mt-1 text-xs text-muted">
-                {count(imp.deal_count, 'deal', 'deals')} · {currency(imp.total_value)}
+                {count(imp.deal_count, 'sales record', 'sales records')} · {currency(imp.total_value)}
                 {imp.stages && ` · ${imp.stages.open.toLocaleString('en-KE')} open, ${imp.stages.won.toLocaleString('en-KE')} won, ${imp.stages.lost.toLocaleString('en-KE')} lost`}
                 {imp.contact_count ? ` · ${count(imp.contact_count, 'new contact', 'new contacts')}` : ''}
               </p>
               {imp.first_deal_at && (
                 <p className="text-xs text-muted">
-                  Deal dates {formatDate(imp.first_deal_at)}
+                  Sales record dates {formatDate(imp.first_deal_at)}
                   {formatDate(imp.last_deal_at) !== formatDate(imp.first_deal_at) && ` – ${formatDate(imp.last_deal_at)}`}
                 </p>
               )}
@@ -164,7 +164,7 @@ export default function ImportHistoryModal({ onClose, onDeleted, onView }) {
               ) : (
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button type="button" onClick={() => onView(imp)} className={smallButton}>
-                    View deals
+                    View sales records
                   </button>
                   <button type="button" onClick={() => setRenaming({ id: imp.id, name: imp.file_name || '' })} className={smallButton}>
                     Rename

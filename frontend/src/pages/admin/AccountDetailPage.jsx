@@ -51,16 +51,16 @@ function AddDealModal({ owner, campaigns, stages, onClose, onCreated }) {
       await api.post(`/admin/users/${owner.id}/deals`, { ...form, value: Number(form.value) });
       onCreated();
     } catch (err) {
-      setError(err.response?.data?.error || 'Could not add the deal');
+      setError(err.response?.data?.error || 'Could not add the sales record');
       setSaving(false);
     }
   };
 
   return (
-    <Modal title={`New deal for ${owner.name}`} onClose={onClose}>
+    <Modal title={`New sales record for ${owner.name}`} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <FormError error={error} />
-        <Field label="Title">
+        <Field label="Sales record description">
           <input value={form.title} onChange={set('title')} className={inputClass} placeholder="e.g. Office supplies order" required autoFocus />
         </Field>
         <div className="grid grid-cols-2 gap-3">
@@ -93,7 +93,7 @@ function AddDealModal({ owner, campaigns, stages, onClose, onCreated }) {
           </Field>
         </div>
         <button type="submit" disabled={saving} className={`${primaryButton} w-full py-2.5`}>
-          {saving ? 'Saving…' : 'Add deal'}
+          {saving ? 'Saving…' : 'Add sales record'}
         </button>
       </form>
     </Modal>
@@ -320,30 +320,30 @@ export default function AccountDetailPage() {
       </Panel>
 
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Deals" value={deals.length} hint={`${openDeals.length} open`} icon={ICONS.pipeline} />
-        <StatCard label="Open value" value={currencyShort(sum(openDeals))} fullValue={currency(sum(openDeals))} hint="Not yet won or lost" icon={ICONS.open} tone="sky" />
-        <StatCard label="Won value" value={currencyShort(sum(wonDeals))} fullValue={currency(sum(wonDeals))} hint={`${wonDeals.length} won`} icon={ICONS.won} tone="emerald" />
+        <StatCard label="Sales records" value={deals.length} hint={`${openDeals.length} open`} icon={ICONS.pipeline} />
+        <StatCard label="Open sales value" value={currencyShort(sum(openDeals))} fullValue={currency(sum(openDeals))} hint="Not yet completed or unsuccessful" icon={ICONS.open} tone="sky" />
+        <StatCard label="Completed sales value" value={currencyShort(sum(wonDeals))} fullValue={currency(sum(wonDeals))} hint={`${wonDeals.length} sales records marked won`} icon={ICONS.won} tone="emerald" />
         <StatCard label="Activities" value={activityCount} hint="Calls, emails, meetings, notes" icon={ICONS.target} tone="gold" />
       </div>
 
       <div className="space-y-6">
         <Panel
-          title="Deals"
-          subtitle={`Deals owned by ${user.name}`}
+          title="Sales records"
+          subtitle={`Sales records owned by ${user.name}`}
           action={
             <button onClick={() => setModal('deal')} className={primaryButton}>
-              + Add deal
+              + Add sales record
             </button>
           }
         >
           {deals.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-muted">No deals yet.</p>
+            <p className="px-5 py-8 text-center text-sm text-muted">No sales records yet.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-fg/10 text-left text-xs uppercase tracking-wide text-subtle">
-                    <th className="px-5 py-3 font-medium">Deal</th>
+                    <th className="px-5 py-3 font-medium">Sales record</th>
                     <th className="px-3 py-3 font-medium">Stage</th>
                     <th className="px-3 py-3 text-right font-medium">Value</th>
                     <th className="px-3 py-3 font-medium">Campaign</th>
@@ -378,7 +378,7 @@ export default function AccountDetailPage() {
 
         <Panel
           title="Campaigns"
-          subtitle="Campaigns they created, and campaigns their deals came from"
+          subtitle="Campaigns they created, and campaigns linked to their sales records"
           action={
             <button onClick={() => setModal('campaign')} className={primaryButton}>
               + Add campaign
@@ -395,7 +395,7 @@ export default function AccountDetailPage() {
                     <th className="px-5 py-3 font-medium">Campaign</th>
                     <th className="px-3 py-3 font-medium">Channel</th>
                     <th className="px-3 py-3 text-right font-medium">Budget</th>
-                    <th className="px-3 py-3 text-right font-medium">Their deals</th>
+                    <th className="px-3 py-3 text-right font-medium">Sales records</th>
                     <th className="px-3 py-3 font-medium">How linked</th>
                     <th className="px-5 py-3" />
                   </tr>
@@ -407,12 +407,12 @@ export default function AccountDetailPage() {
                       <td className="px-3 py-3 text-muted">{c.channel || '—'}</td>
                       <td className="px-3 py-3 text-right tabular-nums text-muted">{currency(c.budget)}</td>
                       <td className="px-3 py-3 text-right tabular-nums text-muted">{c.dealCount}</td>
-                      <td className="px-3 py-3 text-muted">{c.relation === 'created' ? 'Created by them' : 'Through their deals'}</td>
+                      <td className="px-3 py-3 text-muted">{c.relation === 'created' ? 'Created by them' : 'Through their sales records'}</td>
                       <td className="px-5 py-3 text-right">
                         <ConfirmButton
                           label="Delete"
                           confirmLabel="Delete for everyone?"
-                          onConfirm={() => act(() => api.delete(`/admin/campaigns/${c.id}`), `Deleted “${c.name}”. Its deals were kept.`)}
+                          onConfirm={() => act(() => api.delete(`/admin/campaigns/${c.id}`), `Deleted “${c.name}”. Its sales records were kept.`)}
                         />
                       </td>
                     </tr>
@@ -444,7 +444,7 @@ export default function AccountDetailPage() {
           onClose={() => setModal(null)}
           onCreated={() => {
             setModal(null);
-            setNotice('Deal added.');
+            setNotice('Sales record added.');
             load();
           }}
         />

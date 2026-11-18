@@ -6,13 +6,13 @@ const TooltipCard = ({ active, payload, label }) => {
   return (
     <div className="rounded-lg border border-fg/10 bg-surface/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
       <p className="font-medium capitalize text-fg">{label}</p>
-      <p className="text-muted">{payload[0].value} deal{payload[0].value === 1 ? '' : 's'} at this stage</p>
+      <p className="text-muted">{payload[0].value} sales record{payload[0].value === 1 ? '' : 's'} at this stage</p>
     </div>
   );
 };
 
 export default function ConversionFunnelChart({ stages, transitions }) {
-  if (stages.length === 0) return <p className="py-8 text-center text-sm text-muted">Add deals to see your pipeline.</p>;
+  if (stages.length === 0) return <p className="py-8 text-center text-sm text-muted">Add sales records to see your pipeline.</p>;
   return (
     <div>
       {/* Axis labels use currentColor, so they follow the theme's muted text colour */}
@@ -47,7 +47,7 @@ export default function ConversionFunnelChart({ stages, transitions }) {
       {transitions.length > 0 && (
         <details className="mt-3 border-t border-fg/10 pt-3">
           <summary className="cursor-pointer text-xs font-medium text-muted">Show conversion details</summary>
-          <p className="mt-2 text-xs text-subtle">Conversion rate is the share of deals that reached the next step.</p>
+          <p className="mt-2 text-xs text-subtle">Conversion rate is the share of sales records that reached the next step.</p>
           <ul className="mt-2 space-y-2">
             {transitions.map((transition) => (
               <li key={transition.transition} className="flex items-center justify-between gap-2 text-sm">

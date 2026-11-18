@@ -31,7 +31,7 @@ export default function CampaignsPage() {
   const exportReport = () =>
     downloadCsv(
       'salesmesh-campaign-report.csv',
-      ['Campaign', 'Channel', 'Start date', 'End date', 'Budget (KES)', 'Deals', 'CPA (KES)', 'ROI (%)'],
+      ['Campaign', 'Channel', 'Start date', 'End date', 'Budget (KES)', 'Sales records', 'CPA (KES)', 'ROI (%)'],
       campaigns.map((c) => [c.name, c.channel, c.start_date, c.end_date, c.budget, c.dealCount, c.cpa, c.roi])
     );
 
@@ -41,7 +41,7 @@ export default function CampaignsPage() {
         <div className="flex items-center justify-between border-b border-fg/10 px-5 py-4">
           <div>
             <h2 className="font-display font-semibold text-fg">Campaigns</h2>
-            <p className="mt-0.5 text-xs text-subtle">Cost per deal and return, from the deals linked to each campaign</p>
+            <p className="mt-0.5 text-xs text-subtle">Acquisition cost and return from sales records linked to each campaign</p>
           </div>
           <div className="flex items-center gap-2">
           <button
@@ -68,7 +68,7 @@ export default function CampaignsPage() {
           <div className="px-5 py-10 text-center text-sm text-muted">Loading campaigns…</div>
         ) : campaigns.length === 0 ? (
           <div className="px-5 py-6">
-            <EmptyState title="No campaigns yet" description="Create a campaign, then link deals to it to see CPA and ROI." />
+            <EmptyState title="No campaigns yet" description="Create a campaign, then link sales records to it to see CPA and ROI." />
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -79,7 +79,7 @@ export default function CampaignsPage() {
                   <th className="px-5 py-3 font-medium">Channel</th>
                   <th className="px-5 py-3 font-medium">Dates</th>
                   <th className="px-5 py-3 text-right font-medium">Budget</th>
-                  <th className="px-5 py-3 text-right font-medium">Deals</th>
+                  <th className="px-5 py-3 text-right font-medium">Sales records</th>
                   <th className="px-5 py-3 text-right font-medium">CPA</th>
                   <th className="px-5 py-3 text-right font-medium">ROI</th>
                 </tr>

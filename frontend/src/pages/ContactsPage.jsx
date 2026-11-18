@@ -56,7 +56,7 @@ export default function ContactsPage({ scope }) {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-fg/10 px-5 py-4">
           <div>
             <h2 className="font-display font-semibold text-fg">{isTeam ? 'Team contacts' : 'Your contacts'}</h2>
-            <p className="mt-0.5 text-xs text-subtle">The people behind your deals — newest first</p>
+            <p className="mt-0.5 text-xs text-subtle">The people connected to your sales records — newest first</p>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -91,7 +91,7 @@ export default function ContactsPage({ scope }) {
           <div className="px-5 py-6">
             <EmptyState
               title="No contacts yet"
-              description="Add the people you sell to, then link them to deals from the deal panel."
+              description="Add your customers, then link them to sales records."
             />
           </div>
         ) : visible.length === 0 ? (
@@ -131,7 +131,7 @@ export default function ContactsPage({ scope }) {
                     </div>
                     <div className="w-28 text-right">
                       <p className="text-fg-soft">
-                        {stats ? `${stats.count} deal${stats.count === 1 ? '' : 's'}` : 'No deals'}
+                        {stats ? `${stats.count} sales record${stats.count === 1 ? '' : 's'}` : 'No sales records'}
                       </p>
                       {stats?.openValue > 0 && (
                         <p className="text-xs text-subtle">{currency(stats.openValue)} open</p>

@@ -25,7 +25,7 @@ export default function CampaignResultsPage() {
 
   return (
     <DashboardShell title="Campaign results">
-      <Panel title="My campaign results" subtitle="Your deals from each marketing campaign">
+      <Panel title="My campaign results" subtitle="Sales records linked to each marketing campaign">
         {error && (
           <div className="mx-5 mt-4 rounded-md border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{error}</div>
         )}
@@ -34,7 +34,7 @@ export default function CampaignResultsPage() {
           <div className="px-5 py-10 text-center text-sm text-muted">Loading…</div>
         ) : campaigns.length === 0 ? (
           <div className="px-5 py-6">
-            <EmptyState title="No campaigns yet" description="When your manager runs a campaign, link your deals to it to see results here." />
+            <EmptyState title="No campaigns yet" description="When your manager runs a campaign, link sales records to it to see results here." />
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -43,7 +43,7 @@ export default function CampaignResultsPage() {
                 <tr className="border-b border-fg/10 text-left text-xs uppercase tracking-wide text-subtle">
                   <th className="px-5 py-3 font-medium">Campaign</th>
                   <th className="px-5 py-3 font-medium">Channel</th>
-                  <th className="px-5 py-3 text-right font-medium">My deals</th>
+                  <th className="px-5 py-3 text-right font-medium">Sales records</th>
                   <th className="px-5 py-3 text-right font-medium">Won</th>
                   <th className="px-5 py-3 text-right font-medium">Won value</th>
                   <th className="px-5 py-3 text-right font-medium">Open value</th>

@@ -104,7 +104,7 @@ export default function ContactModal({ contact, linkedDeals = 0, onClose, onSave
             <p className="text-red-700 dark:text-red-300">
               Delete {contact.name}?
               {linkedDeals > 0 &&
-                ` ${linkedDeals} linked deal${linkedDeals === 1 ? '' : 's'} will keep existing without a contact.`}
+                ` ${linkedDeals} linked sales record${linkedDeals === 1 ? '' : 's'} will remain without a contact.`}
             </p>
             <div className="mt-2 flex justify-end gap-2">
               <button
