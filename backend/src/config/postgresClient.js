@@ -43,6 +43,8 @@ export const PRIMARY_KEYS = {
 };
 
 const quote = (ident) => `"${ident.replace(/"/g, '""')}"`;
+const toParam = (value) =>
+  value !== null && typeof value === 'object' && !(value instanceof Date) ? JSON.stringify(value) : value;
 
 function primaryKeyOf(table) {
   const pk = PRIMARY_KEYS[table];
@@ -58,7 +60,7 @@ export async function upsertRows(table, rows, client = pool) {
   const values = [];
   const tuples = rows.map((row) => {
     const placeholders = columns.map((col) => {
-      values.push(row[col]);
+      values.push(toParam(row[col]));
       return `$${values.length}`;
     });
     return `(${placeholders.join(', ')})`;

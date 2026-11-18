@@ -2,8 +2,11 @@ const FIELD_TYPES = new Set(['text', 'number', 'date', 'boolean']);
 const FIELD_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const MAX_FIELDS = 20;
 
-export function validateDealFields(input) {
-  if (!Array.isArray(input) || input.length > MAX_FIELDS) {
+export function validateDealFields(input, { maxFields = MAX_FIELDS } = {}) {
+  if (!Array.isArray(input)) {
+    return { error: 'fields must be a list' };
+  }
+  if (input.length > maxFields) {
     return { error: `fields must be a list of no more than ${MAX_FIELDS} items` };
   }
 
@@ -35,7 +38,8 @@ export async function loadDealFields(db, companyId) {
   const { data, error } = await db.from('companies').select('deal_fields').eq('id', companyId).maybeSingle();
   if (error) throw new Error(error.message);
   if (!data?.deal_fields) return [];
-  const validated = validateDealFields(data.deal_fields);
+  // Imports must remain readable for valid fields saved before the current 20-field limit.
+  const validated = validateDealFields(data.deal_fields, { maxFields: Infinity });
   if (validated.error) throw new Error(`Saved deal fields are invalid: ${validated.error}`);
   return validated.fields;
 }

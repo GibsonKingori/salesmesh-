@@ -233,6 +233,21 @@ describe('POST /api/deals/import', () => {
     expect(fake.tables.deals[0].custom_fields).toEqual({ 'service-type': 'Deep clean' });
   });
 
+  test('imports using valid legacy custom fields above the current creation limit', async () => {
+    const savedFields = Array.from({ length: 21 }, (_, index) => ({
+      id: `field-${index}`,
+      label: `Field ${index}`,
+      type: 'text',
+      active: true,
+    }));
+    fake.tables.companies = [{ id: 'co-1', deal_fields: savedFields }];
+
+    const res = await upload(manager, 'Deal Name,Amount\nSofa,45000\n');
+
+    expect(res.status).toBe(201);
+    expect(res.body.imported).toBe(1);
+  });
+
   test('AI can match unfamiliar headings to a company-specific field', async () => {
     fake.tables.companies = [{
       id: 'co-1',

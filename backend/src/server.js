@@ -5,7 +5,7 @@ import { dataSource, dataSourceSetting, goOffline } from './config/dataSource.js
 import { syncAll } from './services/mirrorSync.js';
 import { createMirrorHealer } from './services/mirrorHealer.js';
 import {
-  ensureJournal,
+  ensureOfflineSchema,
   pendingChanges,
   startConnectivityMonitor,
   supabaseReachable,
@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 4000;
 // With local PostgreSQL set up, the API keeps working without internet (see services/offlineSync.js)
 if (pool) {
   try {
-    await ensureJournal();
+    await ensureOfflineSchema();
     const setting = dataSourceSetting();
     if (setting === 'local' || (setting === 'auto' && !(await supabaseReachable()))) {
       goOffline();

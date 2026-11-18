@@ -1,4 +1,5 @@
-import { customFieldMapping, validateCustomFieldValues, validateDealFields } from './dealFields.js';
+import { createFakeSupabase } from '../test/fakeSupabase.js';
+import { customFieldMapping, loadDealFields, validateCustomFieldValues, validateDealFields } from './dealFields.js';
 
 const fields = [
   { id: 'region', label: 'Region', type: 'text', active: true },
@@ -20,6 +21,19 @@ describe('validateDealFields', () => {
       { id: 'area', label: ' region ', type: 'text' },
     ]).error).toMatch(/used more than once/);
     expect(validateDealFields([{ id: 'region', label: 'Region', type: 'currency' }]).error).toMatch(/unsupported type/);
+  });
+
+  test('keeps the creation limit but allows valid legacy fields to be read', async () => {
+    const savedFields = Array.from({ length: 21 }, (_, index) => ({
+      id: `field-${index}`,
+      label: `Field ${index}`,
+      type: 'text',
+      active: true,
+    }));
+    const db = createFakeSupabase({ companies: [{ id: 'co-1', deal_fields: savedFields }] });
+
+    expect(validateDealFields(savedFields).error).toMatch(/no more than 20 items/);
+    await expect(loadDealFields(db, 'co-1')).resolves.toEqual(savedFields);
   });
 });
 

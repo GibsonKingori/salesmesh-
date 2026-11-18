@@ -22,6 +22,15 @@ export async function ensureJournal(client = pool) {
   )`);
 }
 
+export async function ensureOfflineSchema(client = pool) {
+  await client.query('alter table companies add column if not exists pipeline_stages jsonb');
+  await client.query("alter table companies add column if not exists deal_fields jsonb not null default '[]'::jsonb");
+  await client.query("alter table deals add column if not exists custom_fields jsonb not null default '{}'::jsonb");
+  await client.query('alter table deals drop constraint if exists deals_stage_check');
+  await client.query('alter table funnel_benchmarks drop constraint if exists funnel_benchmarks_transition_check');
+  await ensureJournal(client);
+}
+
 export async function pendingChanges(client = pool) {
   const { rows } = await client.query(`select count(distinct (table_name, row_id))::int as n from ${JOURNAL_TABLE}`);
   return rows[0].n;

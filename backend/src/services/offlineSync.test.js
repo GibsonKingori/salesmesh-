@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { dataSource, goOnline } from '../config/dataSource.js';
-import { startConnectivityMonitor, syncWithOfflineChanges } from './offlineSync.js';
+import { ensureOfflineSchema, startConnectivityMonitor, syncWithOfflineChanges } from './offlineSync.js';
 
 const quiet = { log: () => {}, warn: () => {} };
 
@@ -31,6 +31,16 @@ test('DATA_SOURCE=supabase never switches', async () => {
   const monitor = startConnectivityMonitor({ reachable: async () => false, log: quiet });
   expect(monitor.check).toBeUndefined();
   expect(dataSource.offline).toBe(false);
+});
+
+test('upgrades local pipeline settings columns before enabling offline mode', async () => {
+  const client = { query: jest.fn().mockResolvedValue({}) };
+
+  await ensureOfflineSchema(client);
+
+  expect(client.query).toHaveBeenCalledWith('alter table companies add column if not exists pipeline_stages jsonb');
+  expect(client.query).toHaveBeenCalledWith("alter table companies add column if not exists deal_fields jsonb not null default '[]'::jsonb");
+  expect(client.query).toHaveBeenCalledWith(expect.stringContaining('create table if not exists offline_changes'));
 });
 
 test('no Supabase -> local sync while offline, so offline work is never overwritten', async () => {

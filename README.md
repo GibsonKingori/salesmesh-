@@ -189,17 +189,21 @@ npm run db:sync     # copy all data from Supabase
 npm run db:verify   # compare both databases row by row
 ```
 
+On API startup, offline mode also applies the current pipeline and custom-field column updates to an existing local database.
+
 **Self-healing mirror.** While the API is running, the local copy resyncs at startup, within 30 seconds of a failed write, and every 10 minutes. The 10-minute resync also picks up changes made directly in the Supabase dashboard.
 
 **Automatic API failover.** The API checks every 15 seconds whether Supabase can be reached. If it cannot, all reads and writes switch to the local database and an **Offline mode** banner appears in the app.
 
 **Reconciliation.** Offline changes are logged in the `offline_changes` table. When the connection returns, they are sent to Supabase first, and only then is Supabase copied back down, so offline work is never lost. If a record was changed in both places, the offline version is kept.
 
+Deal imports submitted while the API is using local PostgreSQL are saved locally and synchronized when Supabase is reachable again. Image and PDF imports need a locally configured Ollama model. Browser-only offline mode cannot queue file uploads.
+
 **Offline AI.** Fonts are bundled with the app, and image and PDF imports work offline with Ollama. The Claude provider requires an internet connection.
 
 **Browser-only offline use.** On a device that has signed in and synced while connected, the production web app caches its files and role-visible CRM data in that browser. Deals, contacts, and activities can be created, edited, or deleted offline; campaigns can be created. Those changes are kept on the device and sent to the API in order when connectivity returns. If the same field changed in both places, the offline edit wins. The API must be reachable again for queued changes to sync.
 
-The browser cache is device- and browser-specific and is not encrypted. Use a trusted device. Offline use requires a prior online sign-in and sync over HTTPS (or localhost); first-time sign-in, account/security and password actions, configuration changes, and file imports require a connection. The app shell can still open without a prior data sync, but it will not have CRM data to show.
+The browser cache is device- and browser-specific and is not encrypted. Use a trusted device. Offline use requires a prior online sign-in and sync over HTTPS (or localhost); first-time sign-in, account/security and password actions, and configuration changes require a connection. The app shell can still open without a prior data sync, but it will not have CRM data to show.
 
 Run `npm run db:verify` while connected before relying on offline mode. `GET /api/health` reports the active database, the mirror's sync status and the number of changes waiting to be sent.
 
