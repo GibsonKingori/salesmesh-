@@ -17,6 +17,7 @@ import { warmUpAi } from '../services/ai.js';
 import { canAccessOwned, sameCompany, scopeCompany, scopeOwned, visibleOwnerIds } from '../services/access.js';
 import { loadPipelineStages, isClosedStage } from '../services/pipelineStages.js';
 import { customFieldMapping, loadDealFields, validateCustomFieldValues, validateDealFields } from '../services/dealFields.js';
+import { replayOfflineCreate } from '../services/offlineRequest.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -112,6 +113,12 @@ router.get('/priority', async (req, res) => {
 
 // POST /api/deals — create a deal
 router.post('/', async (req, res) => {
+  const replay = await replayOfflineCreate(req, res, {
+    table: 'deals',
+    responseKey: 'deal',
+    canReplay: (deal, user) => deal.company_id === user.company_id && deal.owner_id === user.id,
+  });
+  if (replay.handled) return;
   const { title, value, stage, contact_id, campaign_id, expected_close_date } = req.body;
 
   if (!title || value == null || !stage) {
@@ -141,6 +148,7 @@ router.post('/', async (req, res) => {
     .from('deals')
     .insert([
       {
+        ...(replay.id ? { id: replay.id } : {}),
         company_id: req.user.company_id,
         title,
         value,

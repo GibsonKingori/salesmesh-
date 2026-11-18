@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { recordAudit } from '../services/audit.js';
 import { fetchAll } from '../services/fetchAll.js';
 import { scopeCompany } from '../services/access.js';
+import { replayOfflineCreate } from '../services/offlineRequest.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -20,6 +21,12 @@ router.get('/', async (req, res) => {
 
 // POST /api/campaigns — manager/admin only: campaigns hold budget data
 router.post('/', requireRole('manager', 'admin'), async (req, res) => {
+  const replay = await replayOfflineCreate(req, res, {
+    table: 'campaigns',
+    responseKey: 'campaign',
+    canReplay: (campaign, user) => campaign.company_id === user.company_id && campaign.created_by === user.id,
+  });
+  if (replay.handled) return;
   const { name, budget, start_date, end_date, channel } = req.body;
 
   if (!name) {
@@ -30,6 +37,7 @@ router.post('/', requireRole('manager', 'admin'), async (req, res) => {
     .from('campaigns')
     .insert([
       {
+        ...(replay.id ? { id: replay.id } : {}),
         company_id: req.user.company_id,
         name,
         budget: budget != null ? budget : 0,

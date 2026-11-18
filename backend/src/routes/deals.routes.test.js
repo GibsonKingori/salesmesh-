@@ -155,6 +155,28 @@ describe('GET /api/deals search, filters and paging', () => {
   });
 });
 
+describe('POST /api/deals offline idempotency', () => {
+  test('uses the client mutation ID and safely returns the same deal on retry', async () => {
+    const id = '94c604f3-d5b5-48a5-baaa-67f3b2c7af04';
+    const create = () =>
+      request(app)
+        .post('/api/deals')
+        .set('Authorization', tokenFor(rep))
+        .set('Idempotency-Key', id)
+        .send({ title: 'Offline deal', value: 250, stage: 'lead' });
+
+    const first = await create();
+    const retry = await create();
+
+    expect(first.status).toBe(201);
+    expect(first.body.deal.id).toBe(id);
+    expect(retry.status).toBe(200);
+    expect(retry.body.deal).toEqual(first.body.deal);
+    expect(fake.tables.deals.filter((deal) => deal.id === id)).toHaveLength(1);
+    expect(mirrorUpsert.mock.calls.filter(([table]) => table === 'deals')).toHaveLength(1);
+  });
+});
+
 describe('GET /api/users/team', () => {
   test('managers get names and roles only', async () => {
     const res = await request(app).get('/api/users/team').set('Authorization', tokenFor(manager));

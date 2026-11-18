@@ -5,6 +5,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { canAccessOwned, scopeOwned } from '../services/access.js';
 import { fetchAll } from '../services/fetchAll.js';
 import { recordAudit } from '../services/audit.js';
+import { replayOfflineCreate } from '../services/offlineRequest.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -21,6 +22,12 @@ router.get('/', async (req, res) => {
 
 // POST /api/contacts — create a contact
 router.post('/', async (req, res) => {
+  const replay = await replayOfflineCreate(req, res, {
+    table: 'contacts',
+    responseKey: 'contact',
+    canReplay: (contact, user) => contact.company_id === user.company_id && contact.owner_id === user.id,
+  });
+  if (replay.handled) return;
   const { name, company, email, phone } = req.body;
 
   if (!name) {
@@ -29,7 +36,7 @@ router.post('/', async (req, res) => {
 
   const { data, error } = await supabase
     .from('contacts')
-    .insert([{ company_id: req.user.company_id, name, company: company || null, email: email || null, phone: phone || null, owner_id: req.user.id }])
+    .insert([{ ...(replay.id ? { id: replay.id } : {}), company_id: req.user.company_id, name, company: company || null, email: email || null, phone: phone || null, owner_id: req.user.id }])
     .select()
     .single();
 

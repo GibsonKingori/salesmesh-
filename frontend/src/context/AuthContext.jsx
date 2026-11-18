@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState } from 'react';
-import api from '../api/client.js';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import api, { primeOfflineCache } from '../api/client.js';
 import { markActive } from '../lib/idle.js';
 
 const AuthContext = createContext(null);
@@ -9,6 +9,12 @@ export function AuthProvider({ children }) {
     const stored = localStorage.getItem('salesmesh_user');
     return stored ? JSON.parse(stored) : null;
   });
+
+  useEffect(() => {
+    if (user) {
+      primeOfflineCache(user).catch((error) => console.error('[offline] Could not sync data to this device:', error));
+    }
+  }, [user]);
 
   const login = async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password });

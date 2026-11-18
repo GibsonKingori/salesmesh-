@@ -3,6 +3,7 @@ import { supabase } from '../config/supabaseClient.js';
 import { mirrorUpsert, mirrorDelete } from '../config/postgresClient.js';
 import { requireAuth } from '../middleware/auth.js';
 import { canEditDeal } from '../services/dealUpdates.js';
+import { replayOfflineCreate } from '../services/offlineRequest.js';
 
 const router = express.Router();
 router.use(requireAuth);
@@ -42,6 +43,12 @@ router.get('/', async (req, res) => {
 
 // POST /api/activities — log an activity against a deal
 router.post('/', async (req, res) => {
+  const replay = await replayOfflineCreate(req, res, {
+    table: 'activities',
+    responseKey: 'activity',
+    canReplay: (activity, user) => activity.user_id === user.id,
+  });
+  if (replay.handled) return;
   const { deal_id, type, notes } = req.body;
 
   if (!deal_id || !type) {
@@ -59,7 +66,7 @@ router.post('/', async (req, res) => {
 
   const { data, error } = await supabase
     .from('activities')
-    .insert([{ deal_id, type, notes: notes?.trim() || null, user_id: req.user.id }])
+    .insert([{ ...(replay.id ? { id: replay.id } : {}), deal_id, type, notes: notes?.trim() || null, user_id: req.user.id }])
     .select()
     .single();
 
