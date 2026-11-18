@@ -28,8 +28,8 @@ export function describeAudit(entry) {
       return `Login refused: too many failed attempts${d.email ? ` for ${d.email}` : ''} (locked for 15 minutes)`;
     case 'auth.register':
       return d.createdCompany
-        ? `Started the company “${d.createdCompany}” as its Admin`
-        : `Joined with the company code as ${ROLE_NAMES[d.role] || 'Sales Representative'}`;
+        ? `Started the business “${d.createdCompany}” as its Admin`
+        : `Joined with the business code as ${ROLE_NAMES[d.role] || 'Sales Representative'}`;
     case 'auth.password_reset_requested':
       return d.matched === false ? `Password reset requested for unknown email ${d.email}` : 'Requested a password reset';
     case 'auth.password_reset':
@@ -71,7 +71,7 @@ export function describeAudit(entry) {
     case 'settings.deal_fields_update':
       return 'Updated custom sales record fields';
     case 'settings.join_code_reset':
-      return 'Replaced the company join code';
+      return 'Replaced the business join code';
     default:
       return entry.action;
   }

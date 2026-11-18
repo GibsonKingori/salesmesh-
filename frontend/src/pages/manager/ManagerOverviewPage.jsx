@@ -114,7 +114,7 @@ export default function ManagerOverviewPage() {
 
       <Card title="Representatives" subtitle="Ranked by completed sales value" className="mb-8">
         {team.length === 0 ? (
-          <EmptyState title="No representatives in your team yet" description="Your company administrator assigns representatives to you on the Accounts page." />
+          <EmptyState title="No representatives in your team yet" description="Your business administrator assigns representatives to you on the Accounts page." />
         ) : (
           <div className="-mx-5 -mb-5 overflow-x-auto">
             <table className="w-full min-w-[560px] text-sm">

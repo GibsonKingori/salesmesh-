@@ -14,11 +14,11 @@ const FEATURES = [
   { title: 'Revenue forecast', text: 'A forward view based on sales records marked as won.' },
 ];
 
-// Joining needs the company's join code (from its admin) and makes you a Sales Rep;
-// starting a company makes you its admin
+// Joining needs the business join code (from its admin) and makes you a Sales Rep;
+// starting a business makes you its admin
 const SIGNUP_OPTIONS = [
-  { value: 'join', label: 'Join a company' },
-  { value: 'create', label: 'Start a company' },
+  { value: 'join', label: 'Join a business' },
+  { value: 'create', label: 'Start a business' },
 ];
 
 // Same rules as the server: any case, spaces and dashes ignored ("acme-2345" is ACME2345)
@@ -26,7 +26,7 @@ const JOIN_CODE_LENGTH = 8;
 const normalizeJoinCode = (code) => code.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 // Looks the join code up once it's complete, so a wrong code shows before the form is sent.
-// { status: 'idle' | 'checking' | 'found' | 'missing', companyName, error }
+// { status: 'idle' | 'checking' | 'found' | 'missing', businessName, error }
 function useJoinCodeCheck(joinCode, enabled) {
   const [check, setCheck] = useState({ status: 'idle' });
   const code = normalizeJoinCode(joinCode);
@@ -42,7 +42,7 @@ function useJoinCodeCheck(joinCode, enabled) {
     const timer = setTimeout(() => {
       api
         .get(`/auth/join-code/${code}`)
-        .then((res) => !stale && setCheck({ status: 'found', companyName: res.data.company.name }))
+        .then((res) => !stale && setCheck({ status: 'found', businessName: res.data.company.name }))
         .catch((err) => {
           if (stale) return;
           // Not reachable or rate limited: say so, but leave the final word to Create account
@@ -66,7 +66,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [signup, setSignup] = useState('join'); // 'join' | 'create'
   const [joinCode, setJoinCode] = useState('');
-  const [companyName, setCompanyName] = useState('');
+  const [businessName, setBusinessName] = useState('');
   // api/client.js sends users here with ?expired=1 or ?disabled=1, IdleLogout with ?idle=1, the reset page with ?reset=1
   const [error, setError] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -99,8 +99,8 @@ export default function LoginPage() {
     setNotice('');
     setLoading(true);
     try {
-      const company = signup === 'join' ? { joinCode } : { companyName };
-      const user = isRegister ? await register(name, email, password, company) : await login(email, password);
+      const business = signup === 'join' ? { joinCode } : { companyName: businessName };
+      const user = isRegister ? await register(name, email, password, business) : await login(email, password);
       setWelcomeName(user.name);
       setTimeout(() => {
         navigate(HOME_BY_ROLE[user.role] || '/');
@@ -229,7 +229,7 @@ export default function LoginPage() {
                 <label className="mb-1 block text-sm font-medium text-fg-soft">Email</label>
                 <input
                   type="email"
-                  placeholder="you@company.com"
+                  placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className={inputClass}
@@ -267,7 +267,7 @@ export default function LoginPage() {
 
               {isRegister && (
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-fg-soft">Company</label>
+                  <label className="mb-1 block text-sm font-medium text-fg-soft">Business name</label>
                   <div className="mb-2 flex rounded-lg border border-fg/10 bg-fg/5 p-1 text-sm font-medium">
                     {SIGNUP_OPTIONS.map((opt) => (
                       <button
@@ -288,7 +288,7 @@ export default function LoginPage() {
                       <input
                         type="text"
                         placeholder="Join code, e.g. ACME2345"
-                        aria-label="Company join code"
+                        aria-label="Business join code"
                         value={joinCode}
                         onChange={(e) => setJoinCode(e.target.value)}
                         className={`${inputClass} font-mono uppercase tracking-wider ${
@@ -303,7 +303,7 @@ export default function LoginPage() {
                         {joinCheck.status === 'checking' && <p className="text-subtle">Checking the code…</p>}
                         {joinCheck.status === 'found' && (
                           <p className="text-emerald-700 dark:text-emerald-300">
-                            You’re joining <span className="font-semibold">{joinCheck.companyName}</span> as a Sales Rep. The
+                            You’re joining <span className="font-semibold">{joinCheck.businessName}</span> as a Sales Rep. The
                             admin can change your role.
                           </p>
                         )}
@@ -311,7 +311,7 @@ export default function LoginPage() {
                         {joinCheck.status === 'idle' && (
                           <p className="text-subtle">
                             {joinCheck.error ||
-                              'Ask your company’s admin for the code. You’ll join as a Sales Rep; the admin can change your role.'}
+                              'Ask your business admin for the code. You’ll join as a Sales Rep; the admin can change your role.'}
                           </p>
                         )}
                       </div>
@@ -320,15 +320,15 @@ export default function LoginPage() {
                     <>
                       <input
                         type="text"
-                        placeholder="Company name"
-                        aria-label="Company name"
-                        value={companyName}
-                        onChange={(e) => setCompanyName(e.target.value)}
+                        placeholder="Enter business name"
+                        aria-label="Business name"
+                        value={businessName}
+                        onChange={(e) => setBusinessName(e.target.value)}
                         className={inputClass}
                         required
                       />
                       <p className="mt-1 text-xs text-subtle">
-                        You’ll be the company’s admin, with a join code to share with your team.
+                        You’ll be the business admin, with a join code to share with your team.
                       </p>
                     </>
                   )}

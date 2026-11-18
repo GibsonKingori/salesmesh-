@@ -53,7 +53,7 @@ function JoinCodeCard({ company, onChange }) {
         <p className="text-xs font-semibold uppercase tracking-wider text-muted">{company.name} · join code</p>
         <p className="mt-1 font-mono text-2xl font-bold tracking-[0.2em] text-fg">{company.joinCode}</p>
         <p className="mt-1 text-xs text-subtle">
-          Share it with your team: they enter it under Register → Join a company and start as Sales Reps.
+          Share it with your team: they enter it under Register → Join a business and start as Sales Reps.
         </p>
         {error && <p className="mt-1 text-xs text-red-700 dark:text-red-300">{error}</p>}
       </div>
