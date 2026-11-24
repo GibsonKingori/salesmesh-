@@ -137,10 +137,10 @@ export default function LoginPage() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-400 opacity-75" />
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-accent-400" />
               </span>
-              Built for Kenyan SMEs
+              Built for Kenyan businesses
             </span>
             <h1 className="font-display text-4xl font-bold leading-tight tracking-tight text-fg">
-              Sales records and pipeline tracking for <span className="text-gradient">Kenyan SMEs.</span>
+              Sales records and pipeline tracking for <span className="text-gradient">Kenyan businesses.</span>
             </h1>
             <p className="text-sm leading-relaxed text-fg-soft">
               Record each sale or customer enquiry, track its status, log follow-up activity, and review completed
